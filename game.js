@@ -250,7 +250,7 @@ function updateStoryPanel() {
       kicker = `REVANCHE · PARTE ${campaign.part} / ${campaigns.length}`;
       location = stage.location.toUpperCase();
       title = `${campaign.secretBoss} voltou mais forte`;
-      text = `A derrota anterior nao conteve ${campaign.secretBoss}. O chefe retornou com 50% a mais em seus atributos e percebeu a falha do primeiro encontro.`;
+      text = `A derrota anterior nao conteve ${campaign.secretBoss}. ${stage.scene} O chefe retorna com 50% a mais em seus atributos.`;
       objective = `CHEFE FORTALECIDO · ${campaign.secretBoss.toUpperCase()} · +50% ATRIBUTOS`;
       actionLabel = 'INICIAR REVANCHE';
       dialogueId = `secret:${campaign.id}:intro`;
@@ -352,7 +352,7 @@ function updateStoryPanel() {
         break;
       case STORY_PHASES.EXPLORATION:
         title = 'Reconheça o local';
-        text = `Observe ${stage.location.toLowerCase()} antes do confronto. A investigação prepara a pista que será usada nesta fase.`;
+        text = stage.scene;
         objective = `PRÓXIMO OBJETIVO · ${stage.objective.label}`;
         actionLabel = 'EXPLORAR';
         break;
@@ -1523,7 +1523,37 @@ function drawStoryLandmarks(theme) {
 
   ctx.fillStyle = theme?.accent || '#a79b68';
   ctx.globalAlpha = 0.8;
-  if (stage.id.includes('train') || stage.id.includes('hamon')) {
+  if (stage.id.includes('prison') || stage.id.includes('gwess') || stage.id.includes('johngalli') || stage.id.includes('stand-awakening')) {
+    for (let bar = 0; bar < 9; bar += 1) {
+      ctx.fillRect(404 + bar * 18, 218, 4, 117);
+      ctx.fillRect(402, 225 + bar * 13, 150, 3);
+    }
+  } else if (stage.id.includes('hamon') || stage.id.includes('training')) {
+    ctx.fillStyle = '#77c7d880';
+    ctx.fillRect(390, 292, 190, 18);
+    ctx.fillRect(405, 282, 34, 10);
+    ctx.fillRect(493, 278, 45, 14);
+    ctx.fillStyle = theme?.accent || '#a79b68';
+    ctx.fillRect(456, 248, 8, 55);
+    ctx.fillRect(426, 261, 68, 5);
+  } else if (stage.id.includes('estate') || stage.id.includes('final-dio') || stage.id.includes('valentine') || stage.id.includes('infinite-rotation')) {
+    ctx.fillRect(405, 251, 17, 91);
+    ctx.fillRect(542, 251, 17, 91);
+    ctx.fillRect(405, 248, 154, 9);
+    ctx.fillRect(422, 280, 120, 6);
+    if (stage.id.includes('dio') || stage.id.includes('estate')) {
+      ctx.fillStyle = '#f1a94c';
+      ctx.fillRect(432, 273, 8, 19);
+      ctx.fillRect(524, 273, 8, 19);
+    }
+  } else if (stage.id.includes('kira') || stage.id.includes('morioh') || stage.id.includes('hawaii')) {
+    ctx.fillRect(400, 270, 75, 46);
+    ctx.fillRect(484, 255, 71, 61);
+    ctx.fillStyle = '#d8d2ab';
+    ctx.fillRect(410, 279, 18, 21);
+    ctx.fillRect(494, 264, 18, 21);
+    ctx.fillRect(522, 264, 18, 21);
+  } else if (stage.id.includes('train') || stage.id.includes('trem') || stage.id.includes('bucciarati')) {
     ctx.fillRect(456, 268, 8, 55);
     ctx.fillRect(426, 281, 68, 5);
     ctx.fillRect(429, 304, 63, 5);
@@ -1536,7 +1566,7 @@ function drawStoryLandmarks(theme) {
     ctx.fillRect(432, 251, 119, 11);
     ctx.fillRect(432, 317, 119, 11);
     for (let window = 0; window < 4; window += 1) ctx.fillRect(443 + window * 27, 276, 17, 20);
-  } else if (stage.id.includes('estate') || stage.id.includes('property') || stage.id.includes('diamond')) {
+  } else if (stage.id.includes('property') || stage.id.includes('diamond')) {
     ctx.fillRect(429, 307, 58, 12);
     ctx.fillRect(433, 278, 50, 12);
     ctx.fillStyle = '#d4bf85';
