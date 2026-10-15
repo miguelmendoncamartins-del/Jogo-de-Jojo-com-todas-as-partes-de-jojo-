@@ -1946,7 +1946,7 @@ $('#sound-button').addEventListener('click', () => {
   if (state.sound) playTone(480);
 });
 $('#reset-button').addEventListener('click', () => {
-  if (!window.confirm('Apagar todos os poderes desbloqueados deste navegador?')) return;
+  if (!window.confirm('Apagar todo o progresso salvo e voltar à primeira missão da Parte 1?')) return;
   save.advanced = [];
   save.supreme = [];
   save.victories = [];
@@ -1954,7 +1954,7 @@ $('#reset-button').addEventListener('click', () => {
   state.selected = 0;
   persistSave();
   resetBattle('campaign');
-  showToast('Progresso reiniciado.');
+  showToast('Progresso reiniciado. Parte 1, primeira missão.');
 });
 
 class BattleScene extends Phaser.Scene {

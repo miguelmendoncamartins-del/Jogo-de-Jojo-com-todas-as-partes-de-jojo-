@@ -48,6 +48,8 @@ button { font: inherit; }
 h1 { margin: 5px 0 0; font: 700 27px/.95 'Barlow Condensed', sans-serif; }
 .mode-switch { display: flex; border: 1px solid var(--line); align-self: center; }
 .mode-button { padding: 10px 12px; border: 0; color: var(--muted); background: transparent; font-size: 9px; cursor: pointer; white-space: nowrap; }
+.reset-button { padding: 9px 10px; border: 1px solid var(--line); color: var(--orange); background: transparent; font-size: 8px; cursor: pointer; white-space: nowrap; }
+.reset-button:hover { border-color: var(--orange); color: var(--paper); }
 .mode-button + .mode-button { border-left: 1px solid var(--line); }
 .mode-button.active { color: var(--ink); background: var(--lime); font-weight: 500; }
 .canvas-frame { position: relative; overflow: hidden; background: #28352b; border: 1px solid #515a4b; box-shadow: 0 10px 36px #080b0970; aspect-ratio: 16 / 9; max-height: 57vh; }
