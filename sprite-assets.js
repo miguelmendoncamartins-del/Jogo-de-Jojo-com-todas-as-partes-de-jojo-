@@ -91,7 +91,9 @@ export function resolveSpriteAsset(role, ...names) {
       const normalizedToken = normalize(token);
       if (normalizedToken.length > 2) add(normalizedToken, 100);
     }
-    for (const alias of normalizedAliases.get(normalized) || []) add(normalize(alias), 1);
+    for (const [aliasIndex, alias] of (normalizedAliases.get(normalized) || []).entries()) {
+      add(normalize(alias), aliasIndex + 1);
+    }
   });
 
   if (normalizedNames.size === 0) return null;
