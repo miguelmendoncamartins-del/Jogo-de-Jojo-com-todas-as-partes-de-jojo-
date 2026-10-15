@@ -145,7 +145,7 @@ const kakyoinSupport = {
     { id: 'kakyoin-barrier', name: 'Hierophant Green · Barrier', damage: 105, range: 175, stun: 1.25 },
   ],
 };
-const assistCast = ['Noriaki Kakyoin', 'Jolyne Cujoh', 'Joseph Joestar', 'Giorno Giovanna', 'Jonathan Joestar', 'Josuke Higashikata', 'Johnny Joestar', 'Josuke Higashikata', 'Jodio Joestar'];
+const assistCast = ['kakyoin', 'jolyne', 'joseph', 'giorno', 'jonathan', 'josuke4', 'johnny', 'gappy', 'jodio'];
 
 function loadSave() {
   try {
@@ -417,7 +417,7 @@ function updateStoryPanel() {
 }
 
 function requiresInvestigation(campaign, stage) {
-  return campaign.id === 'jonathan' && campaign.stages[0]?.id === stage.id;
+  return Boolean(campaign && stage?.objective);
 }
 
 function changeStoryPhase(nextPhase, eventId) {
@@ -597,6 +597,10 @@ function continueStory() {
         state.storyStage = currentCampaignStage();
         state.player.x = 380;
         state.player.y = 320;
+        state.player.hp = state.player.maxHp;
+        state.player.energy = state.player.maxEnergy;
+        state.player.statuses = { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 };
+        state.cooldowns = {};
         state.enemies = [];
         state.fightActive = false;
         attachPhysicsBodies();
@@ -1217,19 +1221,19 @@ function checkBattleEnd() {
 function requestAssist() {
   if (state.mode !== 'final' || state.secretPhase !== 2 || !state.fightActive || state.assist || state.assistCooldown > 0) return;
   const current = selectedCharacter();
-  const requestedHelper = assistCast[state.assistIndex || 0];
-  let helper = requestedHelper === kakyoinSupport.name ? kakyoinSupport : characters.find((character) => character.id !== current.id && character.name === requestedHelper);
+  const requestedHelperId = assistCast[state.assistIndex || 0];
+  let helper = requestedHelperId === kakyoinSupport.id ? kakyoinSupport : characters.find((character) => character.id !== current.id && character.id === requestedHelperId);
   if (!helper) helper = characters.find((character) => character.id !== current.id);
   state.assistIndex = ((state.assistIndex || 0) + 1) % assistCast.length;
   if (helper.id === 'jotaro' && !state.jotaroAwakened) {
     showToast('A assistência de Jotaro ainda não está disponível.');
     return;
   }
-  const assistanceSkill = helper.id === 'kakyoinSupport'
-    ? helper.skills[state.assistIndex % helper.skills.length]
-    : helper.id === 'kakyoin'
-      ? helper.skills[0]
-      : helper.skills[helper.skills.length - 1];
+  let assistanceSkill = helper.skills[helper.skills.length - 1];
+  if (helper === kakyoinSupport) {
+    assistanceSkill = helper.skills[(state.kakyoinAssistCount || 0) % helper.skills.length];
+    state.kakyoinAssistCount = (state.kakyoinAssistCount || 0) + 1;
+  }
   state.assist = { character: helper, skill: assistanceSkill, time: 2.7, maxTime: 2.7 };
   state.assistCooldown = 62.7;
   const hasSupreme = save.supreme.includes(helper.id);
@@ -1396,7 +1400,7 @@ function updateEnemy(enemy, dt) {
       const teleportY = Phaser.Math.Clamp(player.y + (enemy.y < player.y ? 92 : -92), 80, 500);
       enemy.x = teleportX; enemy.y = teleportY;
       if (enemy.physicsZone) { enemy.physicsZone.x = teleportX; enemy.physicsZone.y = teleportY; }
-      enemy.body?.setPosition(teleportX, teleportY);
+      enemy.body?.reset(teleportX, teleportY);
     }
     const radius = powerProfile.radius || (ranged ? 77 : enemy.pattern === 'spatial' ? 92 : 58);
     enemy.attackWindup = duration;
@@ -1872,14 +1876,7 @@ function updateInterface(force = false) {
   $('#energy-label').textContent = `${Math.floor(state.player.energy)} / ${state.player.maxEnergy}`;
 
   $('#boss-bars').innerHTML = state.enemies.map((enemy) => `<div class="boss-bar-row"><span>${enemy.id === 'dio-heaven' ? 'DIO' : enemy.id === 'pucci-heaven' ? 'PUCCI' : 'BOSS'}</span><div class="meter"><div class="boss-fill" style="width:${Math.max(0, enemy.hp / enemy.maxHp * 100)}%"></div></div><b>${Math.ceil(enemy.hp)} / ${enemy.maxHp}</b></div>`).join('') || '<span style="color:#939c94;font-size:8px">AGUARDANDO TRANSFORMAÇÃO</span>';
-  const skills = availableSkills();
-  $('#power-row').innerHTML = skills.map((skill, index) => {
-    const unlocked = isUnlocked(skill);
-    const cooldown = state.cooldowns[skill.id] || 0;
-    const lockedText = skill.tier === 'advanced' ? 'LIBERA NA FASE 3' : skill.tier === 'supreme' ? 'LIBERA ANTES DO CHEFE FINAL' : skill.tier === 'awakening' ? 'STAR PLATINUM: OVER HEAVEN' : 'DISPONÍVEL';
-    const status = cooldown > 0 ? `${cooldown.toFixed(1)} s · ${skill.energy} EN` : `${skill.range} P · ${skill.energy} EN`;
-    return `<button type="button" class="power-slot${unlocked ? '' : ' locked'}" data-slot="${index}" ${unlocked && cooldown <= 0 && state.player.energy >= skill.energy && state.fightActive ? '' : 'disabled'} title="${skill.name} · ${unlocked ? `${skill.energy} energia, alcance ${skill.range}` : lockedText}"><span class="power-key">${index + 1}</span><strong>${skill.name}</strong><small>${unlocked ? status : lockedText}</small></button>`;
-  }).join('');
+  updatePowerRow();
   const assistButton = $('#assist-button');
   const assistEnabled = state.mode === 'final' && state.secretPhase === 2 && state.fightActive && !state.assist && state.assistCooldown <= 0;
   assistButton.disabled = !assistEnabled;
@@ -1891,6 +1888,30 @@ function updateInterface(force = false) {
     const unlocked = hasCampaignAccess(characters[index].id);
     button.disabled = !unlocked;
     button.classList.toggle('locked', !unlocked);
+  });
+}
+
+// Atualiza os botões no lugar: recriá-los a cada quadro fazia cliques se perderem.
+function updatePowerRow() {
+  const powerRow = $('#power-row');
+  const skills = availableSkills();
+  const signature = skills.map((skill) => skill.id).join('|');
+  if (powerRow.dataset.signature !== signature) {
+    powerRow.dataset.signature = signature;
+    powerRow.innerHTML = skills.map((skill, index) => `<button type="button" class="power-slot" data-slot="${index}"><span class="power-key">${index + 1}</span><strong>${skill.name}</strong><small></small></button>`).join('');
+  }
+  skills.forEach((skill, index) => {
+    const button = powerRow.children[index];
+    const unlocked = isUnlocked(skill);
+    const cooldown = state.cooldowns[skill.id] || 0;
+    const lockedText = skill.tier === 'advanced' ? 'LIBERA NA FASE 3' : skill.tier === 'supreme' ? 'LIBERA ANTES DO CHEFE FINAL' : skill.tier === 'awakening' ? 'STAR PLATINUM: OVER HEAVEN' : 'DISPONÍVEL';
+    const status = cooldown > 0 ? `${cooldown.toFixed(1)} s · ${skill.energy} EN` : `${skill.range} P · ${skill.energy} EN`;
+    button.classList.toggle('locked', !unlocked);
+    button.disabled = !(unlocked && cooldown <= 0 && state.player.energy >= skill.energy && state.fightActive);
+    button.title = `${skill.name} · ${unlocked ? `${skill.energy} energia, alcance ${skill.range}` : lockedText}`;
+    const label = unlocked ? status : lockedText;
+    const small = button.querySelector('small');
+    if (small.textContent !== label) small.textContent = label;
   });
 }
 
