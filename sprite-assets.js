@@ -30,8 +30,22 @@ const aliases = Object.freeze({
   jodio: ['Jodio Joestar'],
   'will a. zeppeli': ['Wii A Zeppiin', 'Will A Zeppeli'],
   'diego brando alternativo': ['Diego Brando', 'Diego'],
-  'yoshikage kira': ['Yoshikage Kira', 'Kira'],
-  'dio brando': ['Dio Brando', 'Dio'],
+  'diego brando': ['Diego'],
+  'dio': ['Dio_3', 'Dio_1'],
+  'dio brando': ['Dio_1', 'Dio'],
+  'enrico pucci': ['Pucci'],
+  'yoshikage kira': ['Kira_2', 'kira_1', 'Yoshikage Kira', 'Kira'],
+  'kars': ['Kars_2', 'Kars'],
+  'esidisi': ['EsidisiRender'],
+  'foo fighters': ['Foo_Fighers'],
+  'sports maxx': ['Sportsmaxx'],
+  'n doul': ['N_Doul'],
+  'devo': ['Devo-Jojo'],
+  'd arby': ["D'arby"],
+  'daniel j d arby': ["D'arby"],
+  'bruno bucciarati': ['Bucciarati'],
+  'will a zeppeli': ['Wii A Zeppiin', 'Will A Zeppeli'],
+  'jotaro kujo': ['JotaroAnime3'],
   'noriaki kakyoin': ['Noriaki Kakyoin', 'Kakyoin'],
   'jean pierre polnareff': ['Jean Pierre Polnareff', 'Polnareff'],
   'wonder of u': ['Wonder Of You + Toru', 'Wonder Of You', 'Tooru', 'Toru'],
@@ -61,30 +75,34 @@ export function resolveSpriteAsset(role, ...names) {
   const directory = ROLE_DIRECTORIES[role];
   if (!directory) return null;
   const requested = names.flat(Infinity).filter(Boolean);
-  const normalizedNames = new Set();
+  // Keep the caller's priority: character ids and explicit aliases should win
+  // over incidental word fragments in a longer display name.
+  const normalizedNames = new Map();
 
-  for (const name of requested) {
+  requested.forEach((name, requestIndex) => {
     const normalized = normalize(name);
-    if (!normalized) continue;
-    normalizedNames.add(normalized);
+    if (!normalized) return;
+    const add = (candidate, penalty = 0) => {
+      const score = 1000 - requestIndex * 20 - penalty;
+      normalizedNames.set(candidate, Math.max(normalizedNames.get(candidate) || 0, score));
+    };
+    add(normalized);
     for (const token of String(name).split(/[^\p{L}\p{N}]+/u)) {
       const normalizedToken = normalize(token);
-      if (normalizedToken.length > 2) normalizedNames.add(normalizedToken);
+      if (normalizedToken.length > 2) add(normalizedToken, 100);
     }
-    for (const alias of normalizedAliases.get(normalized) || []) normalizedNames.add(normalize(alias));
-  }
+    for (const alias of normalizedAliases.get(normalized) || []) add(normalize(alias), 1);
+  });
 
   if (normalizedNames.size === 0) return null;
   const matches = spriteAssets.filter((asset) => asset.directory === directory)
     .map((asset) => {
       let score = 0;
-      for (const candidate of normalizedNames) {
-        if (candidate === asset.normalizedName) score = Math.max(score, 120);
-        else if (candidate === asset.comparableName) score = Math.max(score, 116);
-        else if (asset.normalizedName.startsWith(candidate)) score = Math.max(score, 100 - asset.normalizedName.length + candidate.length);
-        else if (asset.comparableName.startsWith(candidate)) score = Math.max(score, 98 - asset.comparableName.length + candidate.length);
-        else if (candidate.startsWith(asset.comparableName)) score = Math.max(score, 80);
-        else if (asset.normalizedName.includes(candidate)) score = Math.max(score, 65);
+      for (const [candidate, priority] of normalizedNames) {
+        if (candidate === asset.normalizedName) score = Math.max(score, priority + 20);
+        else if (candidate === asset.comparableName) score = Math.max(score, priority + 16);
+        else if (asset.normalizedName.startsWith(candidate)) score = Math.max(score, priority + 5);
+        else if (asset.comparableName.startsWith(candidate)) score = Math.max(score, priority + 3);
       }
       return { asset, score };
     })
