@@ -1966,6 +1966,10 @@ $('#power-row').addEventListener('click', (event) => {
   const button = event.target.closest('[data-slot]');
   if (button && !button.disabled) useSkill(Number(button.dataset.slot));
 });
+$('#attack-button').addEventListener('click', () => {
+  $('#game').focus({ preventScroll: true });
+  performBasicAttack();
+});
 $('#story-action').addEventListener('click', continueStory);
 document.querySelectorAll('.mode-button').forEach((button) => button.addEventListener('click', () => switchMode(button.dataset.mode)));
 $('#assist-button').addEventListener('click', requestAssist);
