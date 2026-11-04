@@ -1,0 +1,7 @@
+> git push origin main:main
+remote: Internal Server Error        
+remote: Request ID AC29:E8E31:26EEAF4:3395961:6AEB1129        
+remote: Time 2026-11-04T11:04:11Z
+To https://github.com/miguelmendoncamartins-del/Jogo-de-Jojo-com-todas-as-partes-de-jojo-
+ ! [remote rejected] main -> main (Internal Server Error)
+error: failed to push some refs to 'https://github.com/miguelmendoncamartins-del/Jogo-de-Jojo-com-todas-as-partes-de-jojo-'
