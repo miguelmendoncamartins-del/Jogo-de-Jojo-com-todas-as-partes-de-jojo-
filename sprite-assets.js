@@ -121,7 +121,7 @@ const aliases = Object.freeze({
 });
 const normalizedAliases = new Map(Object.entries(aliases).map(([name, candidates]) => [normalize(name), candidates]));
 
-export const spriteAssets = Object.freeze(Object.entries(fileUrls)
+export const spriteAssets = Object.freeze(fileUrls
   .map(([path, url]) => {
     const fileName = path.split('/').at(-1);
     const directory = path.split('/').at(-2);
