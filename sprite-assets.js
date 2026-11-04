@@ -22,7 +22,7 @@ const fileUrls = [
   './Jojo-Sprite/Boss-Secundário/Anjuro.jpeg',
   './Jojo-Sprite/Boss-Secundário/Blackmore.jpeg',
   './Jojo-Sprite/Boss-Secundário/BrufordAnime1.jpeg',
-  './Jojo-Sprite/Boss-Secundário/D'arby.jpeg',
+  "./Jojo-Sprite/Boss-Secundário/D'arby.jpeg",
   './Jojo-Sprite/Boss-Secundário/Devo-Jojo.jpeg',
   './Jojo-Sprite/Boss-Secundário/Diego.jpeg',
   './Jojo-Sprite/Boss-Secundário/Dragoa.jpeg',
