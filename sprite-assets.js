@@ -74,7 +74,10 @@ const fileUrls = [
   './Jojo-Sprite/Protagonista/Joseph.jpeg',
   './Jojo-Sprite/Protagonista/Josuke.jpeg',
   './Jojo-Sprite/Protagonista/JotaroAnime3.jpeg',
-].map((path) => [path, new URL(path, document.baseURI).href]);
+].map((path) => [
+  path,
+  typeof document === 'undefined' ? path : new URL(path, document.baseURI).href,
+]);
 
 const normalize = (value) => String(value)
   .normalize('NFD')
