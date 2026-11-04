@@ -35,8 +35,15 @@ O Phaser Arcade movimenta protagonista e inimigos com hitboxes reais, apresenta 
 
 O registro `sprite-assets.js` associa protagonistas a `Jojo-Sprite/Protagonista`, chefes finais a `Chefe-Final`, antagonistas a `Boss-Secundário`, aliados a `Aliados-do-Protagonista` e DIO Over Heaven a `Chefe-Secreto`. A busca ignora diferenças entre maiúsculas, acentos, espaços e sufixos comuns; também inclui aliases para nomes como `JotaroAnime3`, `Johnny_anime_png`, `Wii A Zeppiin` e `Wonder Of You + Toru`. Se não encontra correspondência na pasta esperada, mantém o fallback em vez de mostrar outra pessoa.
 
-Os arquivos com extensão `.jpeg` são carregados conforme a assinatura real (JPEG, PNG ou WebP). Retratos com fundo claro têm apenas os pixels claros conectados às bordas removidos durante a preparação; os arquivos originais não são alterados.
+Os arquivos com extensão `.jpeg` são carregados conforme a assinatura real (JPEG, PNG ou WebP). Retratos com fundo claro têm apenas os pixels claros conectados às bordas removidos durante a preparação; os arquivos originais não são alterados. A preparação reduz cada imagem a uma grade pequena e amplia com vizinho mais próximo, criando o acabamento pixelado. O personagem ganha quadros de idle/ataque e efeitos de movimento na arena. Nas Partes 3–9, um Stand pixelado animado acompanha o protagonista.
+
+Diálogos de entrada, encontro e vitória avançam automaticamente após cinco segundos; o botão permite avançar antes. O botão de áudio ativa efeitos sintetizados e uma trilha de batalha original gerada localmente pelo Web Audio. Não há gravações da trilha sonora oficial no repositório.
 
 ### Limites do protótipo
 
-Esta é uma primeira versão jogável das campanhas: as fases são missões resumidas com diálogos escritos, não adaptações completas cena a cena. Os retratos importados ainda não têm animação quadro a quadro; ataques, obstáculos e efeitos continuam desenhados em código. Ainda não há trilha sonora, cooperativo local ou mapas completos. Conteúdo original do jogo deve ser entendido como não oficial.
+Esta é uma primeira versão jogável das campanhas: as fases são missões resumidas com diálogos escritos, não adaptações completas cena a cena. As animações de retrato e Stand são geradas no jogo a partir das imagens de referência, não são spritesheets originais. Não há áudio oficial de JoJo, cooperativo local ou mapas completos. Conteúdo original do jogo deve ser entendido como não oficial.
+
+
+### Abrir sem o Vite
+
+Também é possível abrir o projeto com `python3 -m http.server 8000` na pasta do projeto e acessar `http://localhost:8000`. O Phaser está incluído localmente e as imagens usam caminhos relativos, então o servidor simples não precisa transformar os módulos.

@@ -6,11 +6,75 @@ const ROLE_DIRECTORIES = Object.freeze({
   secretBoss: 'Chefe-Secreto',
 });
 
-const fileUrls = import.meta.glob('./Jojo-Sprite/**/*.{jpeg,jpg,png,webp}', {
-  eager: true,
-  import: 'default',
-  query: '?url',
-});
+const fileUrls = [
+  './Jojo-Sprite/Aliados-do-Protagonista/Avdol.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Bucciarati.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Gyro_anime.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Kakyoin.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Old_Joseph.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Paco.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Polnareff.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Trish.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Usagi.jpeg',
+  './Jojo-Sprite/Aliados-do-Protagonista/Wii A Zeppiin.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Aisho Dainenjiyama.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Akira.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Anjuro.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Blackmore.jpeg',
+  './Jojo-Sprite/Boss-Secundário/BrufordAnime1.jpeg',
+  './Jojo-Sprite/Boss-Secundário/D'arby.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Devo-Jojo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Diego.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Dragoa.jpeg',
+  './Jojo-Sprite/Boss-Secundário/EsidisiRender.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Foo_Fighers.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Formaggio.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Ghiaccio.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Gweens.jpg',
+  './Jojo-Sprite/Boss-Secundário/Illuso.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Jack_Jojo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Johngalli A.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Keicho.jpeg',
+  './Jojo-Sprite/Boss-Secundário/N_Doul.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Polpo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Poor_Tom.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Prosciutto_Pesci.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Rikiel-Jojo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Ringo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Rohan.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Santana.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Shigechi.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Sportsmaxx.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Tamaki Damo.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Tarkus.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Terence_Anime.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Vanilla_Ice.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Wamuu.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Yotsuyu_Yagiyama.jpeg',
+  './Jojo-Sprite/Boss-Secundário/Yukako_Fullbody.jpeg',
+  './Jojo-Sprite/Boss-Secundário/versus.jpeg',
+  './Jojo-Sprite/Chefe-Final/Diavolo.jpeg',
+  './Jojo-Sprite/Chefe-Final/Dio_1.jpeg',
+  './Jojo-Sprite/Chefe-Final/Dio_3.jpeg',
+  './Jojo-Sprite/Chefe-Final/John Rod.jpeg',
+  './Jojo-Sprite/Chefe-Final/Kars.jpeg',
+  './Jojo-Sprite/Chefe-Final/Kars_2.jpeg',
+  './Jojo-Sprite/Chefe-Final/Kira_2.jpeg',
+  './Jojo-Sprite/Chefe-Final/Pucci.jpeg',
+  './Jojo-Sprite/Chefe-Final/Wonder Of You + Toru.jpeg',
+  './Jojo-Sprite/Chefe-Final/funny-valentine.jpeg',
+  './Jojo-Sprite/Chefe-Final/kira_1.jpeg',
+  './Jojo-Sprite/Chefe-Secreto/Dio Over Heaven.jpeg',
+  './Jojo-Sprite/Protagonista/Gappy.jpeg',
+  './Jojo-Sprite/Protagonista/Giorno.jpeg',
+  './Jojo-Sprite/Protagonista/Jodio.jpeg',
+  './Jojo-Sprite/Protagonista/Johnny_anime_png.jpeg',
+  './Jojo-Sprite/Protagonista/Jolyne.jpeg',
+  './Jojo-Sprite/Protagonista/Jonathan.jpeg',
+  './Jojo-Sprite/Protagonista/Joseph.jpeg',
+  './Jojo-Sprite/Protagonista/Josuke.jpeg',
+  './Jojo-Sprite/Protagonista/JotaroAnime3.jpeg',
+].map((path) => [path, new URL(path, document.baseURI).href]);
 
 const normalize = (value) => String(value)
   .normalize('NFD')
@@ -173,6 +237,17 @@ export function prepareSpriteImage(image, maxWidth = 256, maxHeight = 384) {
   }
 
   context.putImageData(pixels, 0, 0);
+  // Reduce the portrait to a small pixel grid, then enlarge with nearest-neighbor
+  // sampling so the original folder art becomes a deliberate pixel-art sprite.
+  const pixelCanvas = document.createElement('canvas');
+  pixelCanvas.width = Math.max(24, Math.round(canvas.width / 5));
+  pixelCanvas.height = Math.max(32, Math.round(canvas.height / 5));
+  const pixelContext = pixelCanvas.getContext('2d');
+  pixelContext.imageSmoothingEnabled = true;
+  pixelContext.drawImage(canvas, 0, 0, pixelCanvas.width, pixelCanvas.height);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(pixelCanvas, 0, 0, canvas.width, canvas.height);
   const depthCanvas = document.createElement('canvas');
   depthCanvas.width = canvas.width + 14;
   depthCanvas.height = canvas.height + 14;

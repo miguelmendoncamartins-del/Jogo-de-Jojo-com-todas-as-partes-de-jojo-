@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+const Phaser = globalThis.Phaser;
 import { campaigns, getCampaignForCharacter } from './campaigns.js';
 import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset } from './sprite-assets.js';
 import {
@@ -182,8 +182,12 @@ const state = {
   storyStage: null,
 };
 let audioContext;
+let musicTimer;
+let musicStep = 0;
 let toastTimeout;
 let unlockTimeout;
+let dialogueTimeout;
+let activeDialogueSignature = '';
 
 function selectedCharacter() { return characters[state.selected]; }
 function selectedCampaign() { return getCampaignForCharacter(selectedCharacter().id); }
@@ -278,6 +282,7 @@ function updateStoryPanel() {
       action.hidden = true;
     } else {
       panel.hidden = true;
+      scheduleDialogueAdvance(null, action);
       return;
     }
 
@@ -293,10 +298,12 @@ function updateStoryPanel() {
     action.textContent = actionLabel;
     action.disabled = false;
     panel.hidden = false;
+    scheduleDialogueAdvance(dialogueId, action);
     return;
   }
   if (state.mode !== 'campaign') {
     if (panel) panel.hidden = true;
+    scheduleDialogueAdvance(null, $('#story-action'));
     return;
   }
   const campaign = selectedCampaign();
@@ -372,6 +379,7 @@ function updateStoryPanel() {
         break;
       case STORY_PHASES.BOSS_FIGHT:
         panel.hidden = true;
+        scheduleDialogueAdvance(null, action);
         return;
       case STORY_PHASES.POST_BATTLE:
         title = 'A luta mudou o rumo';
@@ -400,6 +408,7 @@ function updateStoryPanel() {
         break;
       default:
         panel.hidden = true;
+        scheduleDialogueAdvance(null, action);
         return;
     }
     action.hidden = progress.phase === STORY_PHASES.OBJECTIVE_ACTIVE;
@@ -414,6 +423,21 @@ function updateStoryPanel() {
   $('#story-objective').textContent = objective;
   action.textContent = actionLabel;
   panel.hidden = false;
+  scheduleDialogueAdvance(dialogueId, action);
+}
+
+function scheduleDialogueAdvance(dialogueId, action) {
+  const signature = dialogueId && !action.disabled && !action.hidden
+    ? `${dialogueId}:${action.textContent}` : '';
+  if (signature === activeDialogueSignature) return;
+  activeDialogueSignature = signature;
+  window.clearTimeout(dialogueTimeout);
+  action.classList.remove('dialogue-countdown');
+  if (!signature) return;
+  action.classList.add('dialogue-countdown');
+  dialogueTimeout = window.setTimeout(() => {
+    if (activeDialogueSignature === signature && !action.disabled && !action.hidden) action.click();
+  }, 5000);
 }
 
 function requiresInvestigation(campaign, stage) {
@@ -971,6 +995,37 @@ function playTone(frequency, duration = 0.07) {
     oscillator.start();
     oscillator.stop(audioContext.currentTime + duration);
   } catch { /* Audio is optional; combat remains playable without it. */ }
+}
+
+function playThemeStep() {
+  if (!state.sound) return;
+  // Short, original synthesized battle motif, generated locally with Web Audio.
+  const notes = [220, 261.63, 329.63, 392, 329.63, 293.66, 246.94, 196];
+  const frequency = notes[musicStep % notes.length];
+  musicStep += 1;
+  try {
+    audioContext ||= new AudioContext();
+    const now = audioContext.currentTime;
+    for (const [tone, type, volume] of [[frequency, 'triangle', 0.022], [frequency / 2, 'sawtooth', 0.009]]) {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(tone, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(volume, now + 0.035);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.35);
+    }
+  } catch { /* Audio is optional; gameplay remains available without it. */ }
+}
+
+function startTheme() {
+  window.clearInterval(musicTimer);
+  musicStep = 0;
+  playThemeStep();
+  musicTimer = window.setInterval(playThemeStep, 390);
 }
 
 function performBasicAttack() {
@@ -1666,13 +1721,15 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
     const targetHeight = 104 * scale;
     const targetWidth = Math.min(targetHeight * ratio, 78 * scale);
     const drawnHeight = Math.min(targetHeight, targetWidth / ratio);
-    const scalePulse = animation ? 1 + Math.sin(state.elapsed * 34) * 0.025 : 1;
+    const frame = Math.floor(state.elapsed * (animation ? 12 : 5)) % 4;
+    const scalePulse = animation ? 1 + (frame % 2) * 0.035 : 1;
     ctx.fillStyle = '#10151288';
     ctx.beginPath();
     ctx.ellipse(0, 9 * spriteScale, 13 * spriteScale, 4 * spriteScale, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 0.9;
-    ctx.drawImage(sprite, -targetWidth * scalePulse / 2, -drawnHeight * scalePulse + 8, targetWidth * scalePulse, drawnHeight * scalePulse);
+    const frameBob = frame === 1 ? -2 : frame === 3 ? 1 : 0;
+    ctx.drawImage(sprite, -targetWidth * scalePulse / 2, -drawnHeight * scalePulse + 8 + frameBob, targetWidth * scalePulse, drawnHeight * scalePulse);
     if (hitFlash > 0) {
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = '#ffffff88';
@@ -1723,6 +1780,46 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
     ctx.fillRect(-8 * spriteScale, -17 * spriteScale, 16 * spriteScale, 2 * spriteScale);
     ctx.globalAlpha = 1;
   }
+  ctx.restore();
+}
+
+function drawStand(x, y, character, facingX = 1) {
+  const colors = {
+    jotaro: ['#b7a8e8', '#765ca7', '#e6cf6a'], josuke4: ['#6dc9e0', '#34799d', '#f2d36b'],
+    giorno: ['#e6c963', '#ab6f3e', '#f4e4a1'], jolyne: ['#69d3b6', '#368b83', '#e5cf7a'],
+    johnny: ['#75b4dc', '#496eac', '#e3c876'], gappy: ['#d9d7c6', '#4f9db0', '#e5c85e'],
+    jodio: ['#8eb85a', '#506f3a', '#e4d16b'],
+  }[character.id] || ['#9c9ed7', '#555c99', '#e6ce69'];
+  const [body, shade, trim] = colors;
+  const pulse = Math.sin(state.elapsed * 7) * 2;
+  const xOffset = facingX >= 0 ? 27 : -27;
+  ctx.save();
+  ctx.translate(Math.round(x + xOffset), Math.round(y - 12 + pulse));
+  ctx.globalAlpha = 0.87;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = `${body}35`;
+  ctx.fillRect(-19, -38, 38, 49);
+  ctx.fillStyle = shade;
+  ctx.fillRect(-9, -39, 18, 9);
+  ctx.fillRect(-14, -28, 28, 23);
+  ctx.fillRect(-19, -23, 7, 18);
+  ctx.fillRect(12, -23, 7, 18);
+  ctx.fillRect(-11, -5, 8, 15);
+  ctx.fillRect(4, -5, 8, 15);
+  ctx.fillStyle = body;
+  ctx.fillRect(-7, -37, 14, 7);
+  ctx.fillRect(-10, -25, 20, 17);
+  ctx.fillRect(-16, -21, 5, 13);
+  ctx.fillRect(11, -21, 5, 13);
+  ctx.fillRect(-9, -3, 5, 13);
+  ctx.fillRect(4, -3, 5, 13);
+  ctx.fillStyle = trim;
+  ctx.fillRect(-3, -24, 6, 3);
+  ctx.fillRect(-12, -17, 3, 3);
+  ctx.fillRect(9, -17, 3, 3);
+  ctx.globalAlpha = 0.28 + Math.sin(state.elapsed * 9) * 0.08;
+  ctx.fillStyle = trim;
+  ctx.fillRect(-22, -32, 44, 2);
   ctx.restore();
 }
 
@@ -1844,6 +1941,7 @@ function draw() {
   } }));
   drawables.push({ y: state.player.y, draw: () => {
     const character = selectedCharacter();
+    if (character.part >= 3 && character.part <= 9) drawStand(state.player.x, state.player.y, character, state.player.facingX);
     if (character.id === 'jotaro' && state.jotaroAwakened && state.mode === 'final' && state.secretPhase === 2) {
       ctx.globalAlpha = 0.84;
       drawFighter(state.player.x + 24, state.player.y - 8, '#edc857', false, 0.88, state.player.facingX, 0, state.player.attackTimer);
@@ -1976,8 +2074,10 @@ $('#assist-button').addEventListener('click', requestAssist);
 $('#sound-button').addEventListener('click', () => {
   state.sound = !state.sound;
   $('#sound-button').textContent = state.sound ? '♫' : '♪';
-  $('#sound-button').setAttribute('aria-label', state.sound ? 'Desativar efeitos sonoros' : 'Ativar efeitos sonoros');
-  if (state.sound) playTone(480);
+  $('#sound-button').setAttribute('aria-label', state.sound ? 'Desativar trilha e efeitos sonoros' : 'Ativar trilha e efeitos sonoros');
+  $('#sound-button').title = state.sound ? 'Desativar trilha e efeitos sonoros' : 'Ativar trilha e efeitos sonoros';
+  if (state.sound) { startTheme(); playTone(480); }
+  else window.clearInterval(musicTimer);
 });
 $('#reset-button').addEventListener('click', () => {
   if (!window.confirm('Apagar todo o progresso salvo e voltar à primeira missão da Parte 1?')) return;

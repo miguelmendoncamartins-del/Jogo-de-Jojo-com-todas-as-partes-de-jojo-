@@ -6,14 +6,14 @@
     <meta name="theme-color" content="#171a19">
     <meta property="og:image" content="capa.png">
     <title>JoJo's Bizarre Adventure: Eternal Destiny</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="./style.css">
   </head>
   <body>
     <main class="game-shell">
       <header class="topbar">
         <a class="wordmark" href="#arena" aria-label="Eternal Destiny, início"><span>JOJO'S BIZARRE ADVENTURE</span><strong>ETERNAL DESTINY</strong></a>
         <div class="part-label" id="part-label">PARTE 3 <span>/</span> EGITO, 1988</div>
-        <button class="sound-button" id="sound-button" title="Alternar efeitos sonoros" aria-label="Alternar efeitos sonoros">♪</button>
+        <button class="sound-button" id="sound-button" title="Ativar trilha e efeitos sonoros" aria-label="Ativar trilha e efeitos sonoros">♪</button>
       </header>
 
       <section class="game-layout" id="arena">
@@ -76,6 +76,7 @@
       <footer class="site-footer"><span>ETERNAL DESTINY</span><span>UMA JORNADA ATRAVÉS DAS NOVE PARTES</span></footer>
       <div class="unlock-banner" id="unlock-banner" aria-live="assertive"><span class="unlock-eyebrow">NOVO PODER DESBLOQUEADO!</span><strong id="unlock-name"></strong></div>
     </main>
-    <script type="module" src="/game.js"></script>
+    <script src="./vendor/phaser.min.js"></script>
+    <script type="module" src="./game.js"></script>
   </body>
 </html>
