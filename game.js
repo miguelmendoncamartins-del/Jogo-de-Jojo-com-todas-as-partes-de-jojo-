@@ -164,7 +164,7 @@ const state = {
   secretRunPhase: null,
   secretCampaignId: null,
   jotaroAwakened: false,
-  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
+  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
   enemies: [],
   cooldowns: {},
   effects: [],
@@ -909,7 +909,7 @@ function resetBattle(mode = state.mode) {
   state.secretRunPhase = null;
   state.secretCampaignId = null;
   state.jotaroAwakened = false;
-  state.player = { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
+  state.player = { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
   state.touchAxis = { x: 0, y: 0 };
   releaseJoystick();
   state.cooldowns = {};
@@ -1121,6 +1121,7 @@ function performBasicAttack() {
   if (!state.fightActive || performance.now() < state.cinematicUntil || state.attackCooldown > 0) return;
   state.attackCooldown = 0.42;
   state.player.attackTimer = 0.28;
+  state.player.attackAction = 'special';
   state.screenShake = 2;
   const player = state.player;
   let hit = false;
@@ -1172,6 +1173,7 @@ function useSkill(slot) {
   if (skill.effect === 'time-stop' && character.id === 'dio') playNamedSfx(ZA_WARUDO_SFX);
   state.cooldowns[skill.id] = skill.cooldown / 1000;
   state.player.attackTimer = skill.duration;
+  state.player.attackAction = `skill-${slot}`;
   state.screenShake = skill.tier === 'supreme' || skill.tier === 'awakening' ? 7 : 3;
   activateSkill(skill);
   if (isOverHeaven() && slot === 0) playNamedSfx('muda_muda_muda_sound_effect.mp3');
@@ -1600,60 +1602,501 @@ function spawnBurst(x, y, color, type) {
   }
 }
 
-function drawBackground() {
-  const revengeMap = state.mode === 'final' && state.secretRunPhase?.startsWith('revenge');
-  const theme = state.mode === 'campaign' || revengeMap ? state.storyStage?.palette : null;
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, theme?.wall || (state.mode === 'final' ? '#282b34' : '#3c4a3d'));
-  gradient.addColorStop(0.52, theme?.ground || (state.mode === 'final' ? '#36343a' : '#53604a'));
-  gradient.addColorStop(1, theme?.floor || (state.mode === 'final' ? '#26333a' : '#324437'));
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+const sceneKinds = Object.freeze({
+  'p1-estate': 'mansion',
+  'p1-stone-mask': 'london',
+  'p1-hamon-training': 'river',
+  'p1-jack': 'tunnel',
+  'p1-bruford': 'ruins',
+  'p1-tarkus': 'ruins',
+  'p1-final-dio': 'castle',
+  'p2-investigation': 'city',
+  'p2-santana': 'facility',
+  'p2-esidisi': 'volcano',
+  'p2-wamuu': 'colosseum',
+  'p2-kars': 'volcano',
+  'p3-stand-awakening': 'cell',
+  'p3-alliance': 'school',
+  'p3-polnareff': 'hotel',
+  'p3-ndoul': 'desert',
+  'p3-darby': 'casino',
+  'p3-vanilla-ice': 'mansion',
+  'p3-dio': 'cairo',
+  'p4-morioh': 'suburb',
+  'p4-angelo': 'rain-house',
+  'p4-keicho-akira': 'port',
+  'p4-yukako': 'coast',
+  'p4-rohan': 'studio',
+  'p4-shigechi': 'school',
+  'p4-kira': 'suburb',
+  'p5-train': 'train',
+  'p5-bucciarati': 'train',
+  'p5-team': 'restaurant',
+  'p5-missions': 'italy',
+  'p5-polpo': 'prison',
+  'p5-formaggio-illuso': 'italy',
+  'p5-prosciutto-pesci': 'train',
+  'p5-ghiacchio': 'snow',
+  'p5-boss': 'venice',
+  'p5-diavolo': 'colosseum',
+  'p6-prison': 'prison',
+  'p6-gwess': 'prison',
+  'p6-johngalli': 'hospital',
+  'p6-foo-sportsmaxx': 'swamp',
+  'p6-rikiel': 'coast',
+  'p6-versus': 'swamp',
+  'p6-pucci': 'launchpad',
+  'p7-start-race': 'beach',
+  'p7-blackmore': 'rain-town',
+  'p7-ringo': 'forest-cabin',
+  'p7-valentine': 'train',
+  'p7-infinite-rotation': 'coast',
+  'p8-identity': 'rocky-coast',
+  'p8-aisho': 'greenhouse',
+  'p8-damo': 'home',
+  'p8-poor-tom': 'orchard',
+  'p8-tooru': 'hospital',
+  'p9-hawaii': 'tropical-town',
+  'p9-team': 'car',
+  'p9-diamond': 'tropical-villa',
+  'p9-open-chapter': 'volcano',
+});
 
-  ctx.fillStyle = theme?.wall || (state.mode === 'final' ? '#22272c' : '#333f35');
-  ctx.fillRect(0, 32, canvas.width, 104);
-  for (let building = 0; building < 13; building += 1) {
-    const x = building * 78 - 12;
-    const height = 38 + ((building * 37) % 55);
-    ctx.fillStyle = building % 2 ? (theme?.ground || '#626457') : (theme?.wall || '#515c50');
-    ctx.fillRect(x, 135 - height, 65, height);
-    ctx.fillStyle = '#333c37';
-    ctx.fillRect(x + 3, 135 - height, 58, 4);
-    for (let window = 0; window < 4; window += 1) {
-      ctx.fillStyle = state.mode === 'final' ? '#c5a95744' : `${theme?.accent || '#ddcf92'}80`;
-      ctx.fillRect(x + 9 + (window % 2) * 27, 145 - height + Math.floor(window / 2) * 19, 8, 10);
-    }
-  }
-  ctx.fillStyle = state.mode === 'final' ? '#44454a' : '#766f5c';
-  ctx.fillRect(0, 135, canvas.width, 8);
-  ctx.fillStyle = '#30392f';
-  ctx.fillRect(0, 143, canvas.width, 10);
-  ctx.fillStyle = state.mode === 'final' ? '#40464a' : '#5c604d';
-  ctx.fillRect(0, 350, canvas.width, 7);
-  ctx.fillStyle = '#313c35';
-  ctx.fillRect(0, 357, canvas.width, 5);
+function currentSceneKind() {
+  const stage = state.storyStage;
+  if (stage && sceneKinds[stage.id]) return sceneKinds[stage.id];
+  if (state.mode === 'final' && state.secretRunPhase?.startsWith('revenge')) return sceneKinds[stage?.id] || 'city';
+  return ({ jonathan: 'mansion', joseph: 'city', jotaro: 'desert', josuke4: 'suburb', giorno: 'italy', jolyne: 'prison', johnny: 'beach', gappy: 'rocky-coast', jodio: 'tropical-town' })[selectedCharacter().id] || 'city';
+}
 
-  const groundGradient = ctx.createLinearGradient(0, 150, 0, canvas.height);
-  groundGradient.addColorStop(0, theme?.ground || (state.mode === 'final' ? '#3a403a' : '#60604d'));
-  groundGradient.addColorStop(1, theme?.floor || (state.mode === 'final' ? '#2b3736' : '#3d5043'));
-  ctx.fillStyle = groundGradient;
-  ctx.fillRect(0, 153, canvas.width, canvas.height - 153);
-  for (let y = 174; y < 540; y += 38) {
-    const inset = Math.max(0, y - 174) * 0.055;
-    ctx.strokeStyle = y % 3 ? '#d3ccaa0c' : '#e1d9bf12';
-    ctx.lineWidth = 1;
+function drawSceneFloor(theme, kind) {
+  const ground = ctx.createLinearGradient(0, 145, 0, canvas.height);
+  ground.addColorStop(0, theme?.ground || '#59634b');
+  ground.addColorStop(1, theme?.floor || '#35453b');
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 145, canvas.width, canvas.height - 145);
+  const tileColor = ['mansion', 'castle', 'casino', 'hotel', 'cell', 'school', 'facility', 'prison', 'hospital', 'train', 'restaurant', 'studio', 'home', 'car'].includes(kind)
+    ? '#e5ddc11c' : '#f1e8c21a';
+  for (let row = 0; row < 8; row += 1) {
+    const y = 165 + row * 50;
+    const inset = Math.round((y - 165) * 0.08);
+    ctx.strokeStyle = row % 2 ? '#13191322' : tileColor;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(inset, y);
     ctx.lineTo(canvas.width - inset, y);
     ctx.stroke();
   }
-  for (let x = 82; x < canvas.width; x += 124) {
-    ctx.fillStyle = '#ddd8c10e';
-    ctx.fillRect(x, 169, 1, 340);
+  for (let column = -2; column <= 14; column += 1) {
+    const x = 480 + column * 78;
+    ctx.strokeStyle = column % 2 ? '#10161010' : tileColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(480 + (x - 480) * 0.12, 145);
+    ctx.lineTo(x, 540);
+    ctx.stroke();
   }
-  drawPlanter(120, 202);
-  drawPlanter(838, 191);
-  drawPlanter(872, 404);
+}
+
+function drawWallWindows(theme, width = 80, height = 44, gap = 18) {
+  for (let x = 32; x < canvas.width - 30; x += width + gap) {
+    ctx.fillStyle = '#171d1d';
+    ctx.fillRect(x, 54, width, height);
+    ctx.fillStyle = `${theme?.accent || '#e0cf91'}75`;
+    ctx.fillRect(x + 5, 59, width - 10, height - 10);
+    ctx.fillStyle = '#242a26';
+    ctx.fillRect(x + width / 2 - 2, 54, 4, height);
+  }
+}
+
+function drawBuildingRow(theme, tropical = false) {
+  const colors = [theme?.wall || '#4c5148', theme?.ground || '#67634e', '#56584d'];
+  for (let index = 0; index < 8; index += 1) {
+    const x = index * 128 - 18;
+    const height = 48 + (index * 29 % 52);
+    ctx.fillStyle = '#14191655';
+    ctx.fillRect(x + 7, 126 - height + 8, 124, height);
+    ctx.fillStyle = colors[index % colors.length];
+    ctx.fillRect(x, 126 - height, 124, height);
+    ctx.fillStyle = '#242b27';
+    ctx.fillRect(x, 122 - height, 124, 6);
+    for (let window = 0; window < 3; window += 1) {
+      ctx.fillStyle = tropical ? '#82c8bc' : `${theme?.accent || '#e5d093'}85`;
+      ctx.fillRect(x + 14 + window * 36, 90 - height, 20, 24);
+      ctx.fillStyle = '#272d2a';
+      ctx.fillRect(x + 12 + window * 36, 112 - height, 24, 4);
+    }
+    if (tropical && index % 2 === 0) drawTree(x + 110, 142, '#357a54');
+  }
+}
+
+function drawTree(x, y, color = '#527348') {
+  ctx.fillStyle = '#18251d70';
+  ctx.fillRect(x - 15, y - 5, 34, 15);
+  ctx.fillStyle = '#594a35';
+  ctx.fillRect(x - 4, y - 22, 9, 28);
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 18, y - 49, 37, 31);
+  ctx.fillRect(x - 12, y - 59, 25, 16);
+  ctx.fillStyle = '#a4b86766';
+  ctx.fillRect(x - 10, y - 49, 10, 5);
+}
+
+function drawRoomColumns(theme, count = 6) {
+  for (let index = 0; index < count; index += 1) {
+    const x = 25 + index * (910 / (count - 1));
+    ctx.fillStyle = '#15191666';
+    ctx.fillRect(x + 6, 43, 13, 118);
+    ctx.fillStyle = theme?.accent || '#bcb187';
+    ctx.fillRect(x, 37, 16, 110);
+    ctx.fillStyle = '#e5d6a65c';
+    ctx.fillRect(x - 5, 35, 26, 7);
+    ctx.fillRect(x - 3, 145, 22, 8);
+  }
+}
+
+function drawSceneArchitecture(theme, kind, isFinal) {
+  ctx.fillStyle = theme?.wall || '#343d37';
+  ctx.fillRect(0, 0, canvas.width, 151);
+  if (['mansion', 'castle', 'hotel', 'casino', 'restaurant', 'studio', 'home'].includes(kind)) {
+    drawWallWindows(theme, kind === 'casino' ? 100 : 74, 44, 26);
+    ctx.fillStyle = '#171c19';
+    ctx.fillRect(0, 112, canvas.width, 14);
+    ctx.fillStyle = theme?.accent || '#c5b67e';
+    ctx.fillRect(0, 109, canvas.width, 4);
+    if (['mansion', 'castle'].includes(kind)) {
+      drawRoomColumns(theme, 8);
+      ctx.fillStyle = kind === 'castle' ? '#462d34' : '#53353c';
+      ctx.fillRect(415, 150, 130, 390);
+      for (let y = 175; y < 530; y += 46) {
+        ctx.fillStyle = '#d7bc7850';
+        ctx.fillRect(420, y, 120, 2);
+      }
+    }
+  } else if (['city', 'london', 'cairo', 'suburb', 'port', 'italy', 'tropical-town', 'rain-town'].includes(kind)) {
+    drawBuildingRow(theme, kind === 'tropical-town');
+    ctx.fillStyle = '#252b2a';
+    ctx.fillRect(0, 149, canvas.width, 69);
+    ctx.fillStyle = '#d8d0b180';
+    ctx.fillRect(0, 145, canvas.width, 6);
+    ctx.fillRect(0, 216, canvas.width, 5);
+    ctx.fillStyle = '#e9dfb991';
+    for (let x = 60; x < 930; x += 138) ctx.fillRect(x, 181, 58, 3);
+    if (kind === 'port') {
+      for (let x = 64; x < 920; x += 170) {
+        ctx.fillStyle = '#8b6042'; ctx.fillRect(x, 89, 128, 48);
+        ctx.fillStyle = '#d19a5e'; ctx.fillRect(x + 8, 96, 112, 3);
+        for (let line = 1; line < 5; line += 1) ctx.fillRect(x + line * 24, 94, 2, 41);
+      }
+    }
+  } else if (['cell', 'prison', 'facility', 'hospital', 'launchpad'].includes(kind)) {
+    ctx.fillStyle = kind === 'hospital' ? '#b1b8ae' : kind === 'launchpad' ? '#55606a' : '#49504d';
+    ctx.fillRect(0, 0, canvas.width, 151);
+    for (let x = 28; x < 950; x += 118) {
+      ctx.fillStyle = '#292f2e';
+      ctx.fillRect(x, 18, 83, 116);
+      ctx.fillStyle = kind === 'hospital' ? '#d9ded5' : '#626a64';
+      ctx.fillRect(x + 6, 24, 71, 104);
+      ctx.fillStyle = theme?.accent || '#aeb7a2';
+      ctx.fillRect(x + 11, 33, 61, 6);
+      if (kind === 'prison' || kind === 'cell') {
+        ctx.fillStyle = '#202726';
+        for (let bar = 0; bar < 6; bar += 1) ctx.fillRect(x + 13 + bar * 11, 48, 3, 78);
+      } else {
+        ctx.fillStyle = '#344045';
+        ctx.fillRect(x + 13, 68, 55, 24);
+        ctx.fillStyle = '#d2d7d0';
+        ctx.fillRect(x + 18, 63, 23, 8);
+      }
+    }
+    ctx.fillStyle = '#d8e6e0';
+    ctx.fillRect(0, 142, canvas.width, 8);
+  } else if (kind === 'train' || kind === 'car') {
+    ctx.fillStyle = '#242b2e';
+    ctx.fillRect(0, 0, canvas.width, 151);
+    for (let x = 12; x < 940; x += kind === 'car' ? 240 : 156) {
+      ctx.fillStyle = '#1a2123'; ctx.fillRect(x, 24, kind === 'car' ? 214 : 138, 82);
+      ctx.fillStyle = kind === 'car' ? '#718d86' : '#496d77'; ctx.fillRect(x + 7, 31, kind === 'car' ? 200 : 124, 66);
+      ctx.fillStyle = '#1c2221'; ctx.fillRect(x + 3, 108, kind === 'car' ? 207 : 132, 28);
+      ctx.fillStyle = '#946e4f'; ctx.fillRect(x + 13, 112, kind === 'car' ? 86 : 48, 18);
+      ctx.fillRect(x + (kind === 'car' ? 116 : 70), 112, kind === 'car' ? 86 : 48, 18);
+    }
+    ctx.fillStyle = '#c9c4a5'; ctx.fillRect(0, 145, canvas.width, 6);
+  } else if (kind === 'colosseum' || kind === 'ruins') {
+    ctx.fillStyle = '#4d453b'; ctx.fillRect(0, 0, canvas.width, 151);
+    for (let row = 0; row < 4; row += 1) {
+      ctx.fillStyle = row % 2 ? '#80694b' : '#65543e';
+      ctx.fillRect(0, 20 + row * 28, canvas.width, 24);
+      for (let x = 12 + (row % 2) * 28; x < 960; x += 66) {
+        ctx.fillStyle = '#332f2b'; ctx.fillRect(x, 23 + row * 28, 36, 17);
+      }
+    }
+    ctx.fillStyle = '#b09a6b'; ctx.fillRect(0, 136, canvas.width, 12);
+  } else if (['desert', 'beach', 'coast', 'rocky-coast'].includes(kind)) {
+    ctx.fillStyle = kind === 'beach' || kind.includes('coast') ? '#547b84' : '#cbb26f';
+    ctx.fillRect(0, 0, canvas.width, kind === 'desert' ? 151 : 126);
+    if (kind !== 'desert') {
+      ctx.fillStyle = '#d0b875'; ctx.fillRect(0, 115, canvas.width, 39);
+      for (let wave = 0; wave < 6; wave += 1) {
+        ctx.strokeStyle = wave % 2 ? '#d7e8d766' : '#83b8b177'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(0, 76 + wave * 10); ctx.quadraticCurveTo(250, 68 + wave * 10, 480, 80 + wave * 10); ctx.quadraticCurveTo(720, 91 + wave * 10, 960, 74 + wave * 10); ctx.stroke();
+      }
+    } else {
+      for (let dune = 0; dune < 8; dune += 1) {
+        ctx.fillStyle = dune % 2 ? '#a48653' : '#94774d';
+        ctx.beginPath(); ctx.ellipse(dune * 142 - 20, 124, 106, 34 + dune % 3 * 7, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (['river', 'forest-cabin', 'swamp', 'orchard', 'greenhouse'].includes(kind)) {
+    ctx.fillStyle = kind === 'swamp' ? '#364b3c' : '#435840';
+    ctx.fillRect(0, 0, canvas.width, 151);
+    if (kind === 'river') {
+      ctx.fillStyle = '#457e8b'; ctx.fillRect(0, 106, canvas.width, 46);
+      ctx.fillStyle = '#a5d6d477';
+      for (let x = 16; x < 950; x += 75) ctx.fillRect(x, 117 + x % 4 * 3, 36, 3);
+    }
+    for (let x = 35; x < 950; x += 108) drawTree(x, 157, kind === 'orchard' ? '#667744' : '#31583f');
+    if (kind === 'forest-cabin') {
+      ctx.fillStyle = '#4d392f'; ctx.fillRect(365, 72, 230, 92);
+      ctx.fillStyle = '#7b5641'; ctx.beginPath(); ctx.moveTo(343, 78); ctx.lineTo(480, 20); ctx.lineTo(617, 78); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#282622'; ctx.fillRect(445, 107, 70, 57);
+    } else if (kind === 'greenhouse') {
+      ctx.fillStyle = '#89b4a14a'; ctx.fillRect(210, 30, 540, 116);
+      ctx.strokeStyle = '#c6ddd0'; ctx.lineWidth = 4;
+      for (let x = 210; x <= 750; x += 90) { ctx.beginPath(); ctx.moveTo(x, 30); ctx.lineTo(x, 145); ctx.stroke(); }
+      ctx.strokeRect(210, 30, 540, 116);
+    }
+  } else if (kind === 'volcano' || kind === 'snow') {
+    ctx.fillStyle = kind === 'snow' ? '#879aa1' : '#443934';
+    ctx.fillRect(0, 0, canvas.width, 151);
+    for (let peak = 0; peak < 6; peak += 1) {
+      const x = peak * 205 - 55;
+      ctx.fillStyle = kind === 'snow' ? '#647781' : '#51423a';
+      ctx.beginPath(); ctx.moveTo(x, 144); ctx.lineTo(x + 103, 23 + (peak % 2) * 28); ctx.lineTo(x + 212, 144); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = kind === 'snow' ? '#e2e8e4' : '#f27c3f';
+      ctx.beginPath(); ctx.moveTo(x + 75, 58 + (peak % 2) * 28); ctx.lineTo(x + 103, 23 + (peak % 2) * 28); ctx.lineTo(x + 131, 58 + (peak % 2) * 28); ctx.closePath(); ctx.fill();
+    }
+  } else if (kind === 'tunnel' || kind === 'snow') {
+    ctx.fillStyle = '#282c2d'; ctx.fillRect(0, 0, canvas.width, 151);
+    for (let x = 0; x < canvas.width; x += 95) {
+      ctx.strokeStyle = '#927859'; ctx.lineWidth = 7; ctx.strokeRect(x + 7, 20, 80, 127);
+    }
+  } else {
+    drawBuildingRow(theme);
+  }
+}
+
+function drawSceneProps(kind, theme) {
+  if (['city', 'london', 'cairo', 'suburb', 'port', 'italy', 'tropical-town', 'rain-town'].includes(kind)) {
+    ctx.fillStyle = '#252b2a';
+    ctx.fillRect(0, 149, canvas.width, 69);
+    ctx.fillStyle = '#d8d0b180';
+    ctx.fillRect(0, 145, canvas.width, 6);
+    ctx.fillRect(0, 216, canvas.width, 5);
+    ctx.fillStyle = '#e9dfb991';
+    for (let x = 60; x < 930; x += 138) ctx.fillRect(x, 181, 58, 3);
+    if (kind === 'port') {
+      for (let x = 64; x < 920; x += 170) {
+        ctx.fillStyle = '#8b6042'; ctx.fillRect(x, 89, 128, 48);
+        ctx.fillStyle = '#d19a5e'; ctx.fillRect(x + 8, 96, 112, 3);
+        for (let line = 1; line < 5; line += 1) ctx.fillRect(x + line * 24, 94, 2, 41);
+      }
+    }
+  }
+  if (kind === 'mansion' || kind === 'castle') {
+    ctx.fillStyle = kind === 'castle' ? '#462d34' : '#53353c';
+    ctx.fillRect(415, 150, 130, 390);
+    for (let y = 175; y < 530; y += 46) {
+      ctx.fillStyle = '#d7bc7850';
+      ctx.fillRect(420, y, 120, 2);
+    }
+  }
+  if (kind === 'casino') {
+    for (const [x, y] of [[145, 232], [480, 294], [810, 224]]) {
+      ctx.fillStyle = '#171d18';
+      ctx.beginPath(); ctx.ellipse(x, y + 9, 74, 40, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#75543c'; ctx.fillRect(x - 8, y + 12, 16, 45);
+      ctx.fillStyle = '#26634d';
+      ctx.beginPath(); ctx.ellipse(x, y, 68, 34, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#d9c17a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(x, y, 29, 15, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#d3e85a';
+      ctx.fillRect(x - 25, y - 3, 5, 7); ctx.fillRect(x + 18, y + 3, 5, 7);
+    }
+  }
+  if (kind === 'restaurant' || kind === 'studio' || kind === 'home') {
+    for (const [x, y] of [[155, 232], [800, 221], [175, 430], [786, 426]]) {
+      ctx.fillStyle = '#1c211d80';
+      ctx.beginPath(); ctx.ellipse(x, y + 8, 50, 25, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = kind === 'studio' ? '#795947' : '#8b6950';
+      ctx.beginPath(); ctx.ellipse(x, y, 43, 21, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d9c08a'; ctx.fillRect(x - 4, y - 4, 8, 8);
+    }
+  }
+  if (kind === 'mansion' || kind === 'castle') {
+    ctx.fillStyle = kind === 'castle' ? '#462d34' : '#53353c';
+    ctx.fillRect(415, 150, 130, 390);
+    for (let y = 175; y < 530; y += 46) {
+      ctx.fillStyle = '#d7bc7850';
+      ctx.fillRect(420, y, 120, 2);
+    }
+  }
+  if (kind === 'casino') {
+    for (const [x, y] of [[145, 232], [480, 294], [810, 224]]) {
+      ctx.fillStyle = '#171d18';
+      ctx.beginPath(); ctx.ellipse(x, y + 9, 74, 40, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#75543c'; ctx.fillRect(x - 8, y + 12, 16, 45);
+      ctx.fillStyle = '#26634d';
+      ctx.beginPath(); ctx.ellipse(x, y, 68, 34, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#d9c17a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(x, y, 29, 15, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#d3e85a';
+      ctx.fillRect(x - 25, y - 3, 5, 7); ctx.fillRect(x + 18, y + 3, 5, 7);
+    }
+  }
+  if (kind === 'restaurant' || kind === 'studio' || kind === 'home') {
+    for (const [x, y] of [[155, 232], [800, 221], [175, 430], [786, 426]]) {
+      ctx.fillStyle = '#1c211d80';
+      ctx.beginPath(); ctx.ellipse(x, y + 8, 50, 25, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = kind === 'studio' ? '#795947' : '#8b6950';
+      ctx.beginPath(); ctx.ellipse(x, y, 43, 21, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d9c08a'; ctx.fillRect(x - 4, y - 4, 8, 8);
+    }
+  }
+  if (kind === 'beach' || kind === 'coast' || kind === 'tropical-town' || kind === 'tropical-villa') {
+    drawTree(62, 227, '#30764d');
+    drawTree(900, 221, '#347850');
+    if (kind === 'beach') {
+      ctx.fillStyle = '#a89161'; ctx.fillRect(0, 305, 960, 8);
+      for (let x = 96; x < 900; x += 185) {
+        ctx.fillStyle = '#e4d7b384'; ctx.fillRect(x, 204, 3, 90);
+        ctx.fillRect(x - 21, 205, 45, 3);
+      }
+    }
+  } else if (kind === 'volcano') {
+    ctx.strokeStyle = '#ed7244'; ctx.lineWidth = 5;
+    for (let crack = 0; crack < 4; crack += 1) {
+      const x = 110 + crack * 223;
+      ctx.beginPath(); ctx.moveTo(x, 158); ctx.lineTo(x + 38, 207); ctx.lineTo(x + 18, 260); ctx.lineTo(x + 71, 321); ctx.stroke();
+    }
+    for (const [x, y] of [[126, 337], [812, 292], [741, 454]]) drawRubble(x, y);
+  } else if (kind === 'snow') {
+    ctx.fillStyle = '#dce7e455';
+    for (let x = 30; x < 950; x += 72) ctx.fillRect(x, 160 + (x % 5) * 43, 35, 4);
+  } else if (kind === 'prison' || kind === 'cell') {
+    ctx.fillStyle = '#202626';
+    for (let x = 20; x < 950; x += 112) {
+      ctx.fillRect(x, 210, 4, 292);
+      ctx.fillRect(x + 94, 210, 4, 292);
+      ctx.fillRect(x, 209, 98, 6);
+      ctx.fillRect(x, 496, 98, 6);
+    }
+  } else if (kind === 'casino' || kind === 'restaurant') {
+    for (const [x, y] of kind === 'casino' ? [[145, 232], [480, 294], [810, 224]] : [[290, 252], [672, 411]]) {
+      ctx.fillStyle = '#171d18';
+      ctx.beginPath(); ctx.ellipse(x, y + 9, 70, 38, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = kind === 'casino' ? '#26634d' : '#8b6950';
+      ctx.beginPath(); ctx.ellipse(x, y, 64, 32, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = kind === 'casino' ? '#d9c17a' : '#d9c08a';
+      ctx.beginPath(); ctx.ellipse(x, y, kind === 'casino' ? 28 : 0, kind === 'casino' ? 14 : 0, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#5c4235'; ctx.fillRect(x - 4, y + 12, 8, 32);
+    }
+  } else if (kind === 'train' || kind === 'car') {
+    ctx.fillStyle = '#171c1d';
+    ctx.fillRect(0, 151, 14, 389); ctx.fillRect(946, 151, 14, 389);
+    for (let y = 182; y < 520; y += 77) {
+      ctx.fillStyle = '#5a5044'; ctx.fillRect(28, y, 84, 36); ctx.fillRect(848, y, 84, 36);
+      ctx.fillStyle = '#b18b5f'; ctx.fillRect(35, y + 5, 70, 4); ctx.fillRect(855, y + 5, 70, 4);
+    }
+  } else if (kind === 'hospital') {
+    for (const [x, y] of [[86, 262], [830, 420]]) {
+      ctx.fillStyle = '#242c2f'; ctx.fillRect(x, y, 112, 34);
+      ctx.fillStyle = '#d5ddd8'; ctx.fillRect(x + 5, y - 14, 103, 24);
+      ctx.fillStyle = '#fff'; ctx.fillRect(x + 13, y - 12, 35, 17);
+      ctx.fillStyle = '#66716c'; ctx.fillRect(x + 4, y + 34, 4, 13); ctx.fillRect(x + 103, y + 34, 4, 13);
+    }
+  } else if (kind === 'forest-cabin' || kind === 'orchard' || kind === 'river' || kind === 'swamp') {
+    for (let x = 44; x < 950; x += 146) drawTree(x, 516, kind === 'orchard' ? '#687b48' : '#345943');
+  } else if (kind === 'colosseum' || kind === 'ruins') {
+    for (let x = 48; x < 930; x += 144) {
+      ctx.fillStyle = '#312d29'; ctx.fillRect(x, 184, 20, 132);
+      ctx.fillStyle = theme?.accent || '#a99369'; ctx.fillRect(x - 8, 178, 36, 10);
+      ctx.fillRect(x - 5, 314, 30, 8);
+    }
+    ctx.strokeStyle = '#d4c09555'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(480, 366, 322, 128, 0, 0, Math.PI * 2); ctx.stroke();
+  } else if (kind === 'mansion' || kind === 'castle') {
+    for (const [x, y] of [[170, 265], [790, 393]]) {
+      ctx.fillStyle = '#171b18'; ctx.fillRect(x - 28, y + 7, 56, 20);
+      ctx.fillStyle = '#68454b'; ctx.fillRect(x - 24, y - 13, 48, 19);
+      ctx.fillStyle = theme?.accent || '#c9b986'; ctx.fillRect(x - 27, y - 16, 54, 4);
+    }
+  } else if (kind === 'suburb' || kind === 'tropical-villa' || kind === 'home' || kind === 'studio') {
+    for (const [x, y] of [[86, 241], [874, 430]]) {
+      ctx.fillStyle = '#20251f80'; ctx.fillRect(x - 34, y + 22, 72, 12);
+      ctx.fillStyle = theme?.accent || '#c7b788'; ctx.fillRect(x - 31, y - 2, 64, 27);
+      ctx.fillStyle = '#48504b'; ctx.fillRect(x - 24, y + 4, 18, 18); ctx.fillRect(x + 5, y + 4, 18, 18);
+    }
+  }
+}
+
+function drawRubble(x, y) {
+  ctx.fillStyle = '#252927';
+  ctx.fillRect(x - 18, y + 5, 43, 9);
+  ctx.fillStyle = '#817866';
+  ctx.fillRect(x - 13, y - 2, 16, 10);
+  ctx.fillRect(x + 2, y - 8, 18, 13);
+  ctx.fillStyle = '#aaa084';
+  ctx.fillRect(x - 9, y - 5, 7, 4);
+}
+
+function drawBackground() {
+  const revengeMap = state.mode === 'final' && state.secretRunPhase?.startsWith('revenge');
+  const theme = state.mode === 'campaign' || revengeMap ? state.storyStage?.palette : null;
+  const kind = currentSceneKind();
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, theme?.wall || (state.mode === 'final' ? '#282b34' : '#3c4a3d'));
+  gradient.addColorStop(0.31, theme?.ground || (state.mode === 'final' ? '#36343a' : '#53604a'));
+  gradient.addColorStop(1, theme?.floor || (state.mode === 'final' ? '#26333a' : '#324437'));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawSceneArchitecture(theme, kind, state.mode === 'final');
+  drawSceneFloor(theme, kind);
+  drawSceneProps(kind, theme);
+  const progress = state.mode === 'campaign' ? currentCampaignProgress() : null;
+  const ruinedEstate = kind === 'castle' && ['ENVIRONMENT_CHANGED', 'NEXT_STAGE_UNLOCKED', 'STAGE_COMPLETE'].includes(progress?.phase);
+  if (ruinedEstate) {
+    for (const [x, y] of [[251, 293], [698, 246], [590, 445]]) drawRubble(x, y);
+    ctx.globalAlpha = 0.8;
+    for (let flame = 0; flame < 7; flame += 1) {
+      const x = 52 + flame * 137;
+      const flicker = Math.sin(state.elapsed * 11 + flame) * 5;
+      ctx.fillStyle = '#ff6b35';
+      ctx.beginPath(); ctx.moveTo(x - 12, 160); ctx.lineTo(x, 127 + flicker); ctx.lineTo(x + 13, 161); ctx.fill();
+      ctx.fillStyle = '#ffd36e';
+      ctx.beginPath(); ctx.moveTo(x - 5, 158); ctx.lineTo(x, 140 + flicker); ctx.lineTo(x + 6, 159); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (kind === 'rain-house' || kind === 'rain-town') {
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#c4e0e5';
+    ctx.lineWidth = 1;
+    for (let drop = 0; drop < 58; drop += 1) {
+      const x = (drop * 97 + state.elapsed * 75) % canvas.width;
+      const y = (drop * 53 + state.elapsed * 190) % canvas.height;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 4, y + 12); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (kind === 'snow') {
+    ctx.fillStyle = '#f2f4e8';
+    for (let flake = 0; flake < 44; flake += 1) {
+      const x = (flake * 113 + state.elapsed * 19) % canvas.width;
+      const y = (flake * 71 + state.elapsed * 24) % canvas.height;
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
   drawStoryLandmarks(theme);
   drawDepthRails();
 }
@@ -1677,66 +2120,6 @@ function drawStoryLandmarks(theme) {
     }
     return;
   }
-
-  ctx.fillStyle = theme?.accent || '#a79b68';
-  ctx.globalAlpha = 0.8;
-  if (stage.id.includes('prison') || stage.id.includes('gwess') || stage.id.includes('johngalli') || stage.id.includes('stand-awakening')) {
-    for (let bar = 0; bar < 9; bar += 1) {
-      ctx.fillRect(404 + bar * 18, 218, 4, 117);
-      ctx.fillRect(402, 225 + bar * 13, 150, 3);
-    }
-  } else if (stage.id.includes('hamon') || stage.id.includes('training')) {
-    ctx.fillStyle = '#77c7d880';
-    ctx.fillRect(390, 292, 190, 18);
-    ctx.fillRect(405, 282, 34, 10);
-    ctx.fillRect(493, 278, 45, 14);
-    ctx.fillStyle = theme?.accent || '#a79b68';
-    ctx.fillRect(456, 248, 8, 55);
-    ctx.fillRect(426, 261, 68, 5);
-  } else if (stage.id.includes('estate') || stage.id.includes('final-dio') || stage.id.includes('valentine') || stage.id.includes('infinite-rotation')) {
-    ctx.fillRect(405, 251, 17, 91);
-    ctx.fillRect(542, 251, 17, 91);
-    ctx.fillRect(405, 248, 154, 9);
-    ctx.fillRect(422, 280, 120, 6);
-    if (stage.id.includes('dio') || stage.id.includes('estate')) {
-      ctx.fillStyle = '#f1a94c';
-      ctx.fillRect(432, 273, 8, 19);
-      ctx.fillRect(524, 273, 8, 19);
-    }
-  } else if (stage.id.includes('kira') || stage.id.includes('morioh') || stage.id.includes('hawaii')) {
-    ctx.fillRect(400, 270, 75, 46);
-    ctx.fillRect(484, 255, 71, 61);
-    ctx.fillStyle = '#d8d2ab';
-    ctx.fillRect(410, 279, 18, 21);
-    ctx.fillRect(494, 264, 18, 21);
-    ctx.fillRect(522, 264, 18, 21);
-  } else if (stage.id.includes('train') || stage.id.includes('trem') || stage.id.includes('bucciarati')) {
-    ctx.fillRect(456, 268, 8, 55);
-    ctx.fillRect(426, 281, 68, 5);
-    ctx.fillRect(429, 304, 63, 5);
-  } else if (stage.id.includes('race') || stage.id.includes('rotation')) {
-    for (let post = 0; post < 5; post += 1) ctx.fillRect(427 + post * 27, 260, 4, 59);
-    ctx.fillRect(427, 271, 112, 4);
-  } else if (stage.id.includes('prison') || stage.id.includes('gwess') || stage.id.includes('johngalli')) {
-    for (let bar = 0; bar < 7; bar += 1) ctx.fillRect(434 + bar * 13, 255, 3, 68);
-  } else if (stage.id.includes('train') || stage.id.includes('trem')) {
-    ctx.fillRect(432, 251, 119, 11);
-    ctx.fillRect(432, 317, 119, 11);
-    for (let window = 0; window < 4; window += 1) ctx.fillRect(443 + window * 27, 276, 17, 20);
-  } else if (stage.id.includes('property') || stage.id.includes('diamond')) {
-    ctx.fillRect(429, 307, 58, 12);
-    ctx.fillRect(433, 278, 50, 12);
-    ctx.fillStyle = '#d4bf85';
-    ctx.fillRect(450, 269, 18, 38);
-  } else if (stage.id.includes('dune') || stage.id.includes('desert') || stage.id.includes('hualalai')) {
-    ctx.fillRect(414, 303, 58, 12);
-    ctx.fillRect(476, 290, 64, 15);
-  } else {
-    ctx.fillRect(420, 302, 45, 13);
-    ctx.fillRect(466, 290, 48, 13);
-    ctx.fillRect(515, 277, 42, 13);
-  }
-  ctx.globalAlpha = 1;
 
   if (progress?.phase === STORY_PHASES.OBJECTIVE_ACTIVE) {
     const marker = stage.objective;
@@ -1814,7 +2197,7 @@ function animationPhase(identity) {
   return [...String(identity)].reduce((value, letter) => (value + letter.charCodeAt(0)) % 4, 0);
 }
 
-function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null, moving = false, animationIdentity = '') {
+function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null, moving = false, animationIdentity = '', attackAction = 'special') {
   const spriteScale = 1.8 * scale;
   const attacking = animation > 0;
   const walking = moving && !attacking;
@@ -1832,13 +2215,15 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
   if (walking) ctx.rotate(step * 0.018);
   ctx.imageSmoothingEnabled = false;
   const baseSprite = getPreparedSprite(spriteAsset);
-  const sprite = baseSprite;
+  const pixelFrames = baseSprite?.frames;
+  const action = attacking ? attackAction : walking ? 'walk' : 'idle';
+  const sprite = pixelFrames?.[action]?.[frame] || baseSprite;
   if (sprite) {
     const ratio = sprite.width / sprite.height;
     const targetHeight = (sprite.isPixelSheet || baseSprite.isPixelSheet ? 120 : 104) * scale;
-    const targetWidth = Math.min(targetHeight * ratio, (baseSprite.isPixelSheet ? 260 : 78) * scale);
+    const targetWidth = Math.min(targetHeight * ratio, (pixelFrames ? 112 : baseSprite.isPixelSheet ? 260 : 78) * scale);
     if (baseSprite.isPixelSheet && !animation) { const breathe = 1 + Math.sin(state.elapsed * 5 + x) * 0.02; ctx.scale(1 / breathe, breathe); }
-    if (baseSprite.isPixelSheet && attacking) {
+    if (baseSprite.isPixelSheet && attacking && !pixelFrames) {
       ctx.translate(4 + Math.max(0, attackMotion) * 7, 0);
       ctx.rotate(attackMotion * 0.035);
     }
@@ -1848,8 +2233,8 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
     ctx.beginPath();
     ctx.ellipse(0, 9 * spriteScale, 13 * spriteScale, 4 * spriteScale, 0, 0, Math.PI * 2);
     ctx.fill();
-    const frameBob = frame === 1 ? -2 : frame === 3 ? 1 : 0;
-    if (baseSprite.isPixelSheet && attacking) {
+    const frameBob = pixelFrames ? 0 : frame === 1 ? -2 : frame === 3 ? 1 : 0;
+    if (baseSprite.isPixelSheet && attacking && !pixelFrames) {
       ctx.globalAlpha = 0.2;
       ctx.drawImage(sprite, -targetWidth / 2 - 11, -drawnHeight + 8 + frameBob, targetWidth, drawnHeight);
       ctx.globalAlpha = 0.32;
@@ -2097,7 +2482,7 @@ function draw() {
       drawFighter(state.player.x + 24, state.player.y - 8, '#edc857', false, 0.88, state.player.facingX, 0, state.player.attackTimer);
       ctx.globalAlpha = 1;
     }
-    drawFighter(state.player.x, state.player.y, state.player.hitFlash > 0 ? '#fff' : character.color, true, 1, state.player.facingX, state.player.hitFlash, state.player.attackTimer, character.spriteAsset, state.player.isMoving, character.id);
+    drawFighter(state.player.x, state.player.y, state.player.hitFlash > 0 ? '#fff' : character.color, true, 1, state.player.facingX, state.player.hitFlash, state.player.attackTimer, character.spriteAsset, state.player.isMoving, character.id, state.player.attackAction);
     ctx.fillStyle = '#fff6cf';
     ctx.font = '9px "DM Mono", monospace';
     ctx.textAlign = 'center';

@@ -278,10 +278,49 @@ export function prepareSpriteImage(image, maxWidth = 256, maxHeight = 384) {
 }
 
 export function spriteAnimationFrame(mode, elapsed, phase = 0) {
-  const frameRates = { idle: 3, walk: 9, attack: 15 };
+  const frameRates = { idle: 3, walk: 9, attack: 15, special: 15 };
   const frameRate = frameRates[mode];
   if (!frameRate) throw new RangeError(`Animação de sprite inválida: ${mode}`);
   return ((Math.floor(Math.max(0, elapsed) * frameRate + phase) % 4) + 4) % 4;
+}
+
+async function loadPixelAnimationFrames(asset, sprite) {
+  const actions = ['idle', 'walk', 'special', 'skill-0', 'skill-1', 'skill-2', 'skill-3'];
+  const frames = {};
+  await Promise.all(actions.map(async (action) => {
+    const path = [asset.directory, asset.name, `${action}.png`].map(encodeURIComponent).join('/');
+    const url = new URL(`./pixel-sprites/animations/${path}`, document.baseURI);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = URL.createObjectURL(await response.blob());
+      try {
+        await image.decode();
+        if (image.naturalWidth % 4 !== 0) throw new Error('A spritesheet precisa conter quatro quadros iguais.');
+        const frameWidth = image.naturalWidth / 4;
+        frames[action] = Array.from({ length: 4 }, (_, index) => {
+          const frame = document.createElement('canvas');
+          frame.width = frameWidth;
+          frame.height = image.naturalHeight;
+          const context = frame.getContext('2d');
+          context.imageSmoothingEnabled = false;
+          context.drawImage(image, index * frameWidth, 0, frameWidth, image.naturalHeight, 0, 0, frameWidth, image.naturalHeight);
+          return frame;
+        });
+      } finally {
+        URL.revokeObjectURL(image.src);
+      }
+    } catch (error) {
+      console.warn(`Animação pixel indisponível: ${asset.name}/${action}`, error);
+    }
+  }));
+  if (frames.idle && frames.walk) {
+    frames.attack = frames.special || frames.idle;
+    sprite.frames = frames;
+    sprite.isPixelSheet = true;
+  }
 }
 
 function imageMimeType(bytes) {
@@ -310,7 +349,9 @@ export async function loadSpriteImages(requestedAssets = spriteAssets, onProgres
         image.decoding = 'async';
         image.src = objectUrl;
         await image.decode();
-        prepared.set(asset.key, prepareSpriteImage(image));
+        const sprite = prepareSpriteImage(image);
+        if (asset.directory === 'Protagonista') await loadPixelAnimationFrames(asset, sprite);
+        prepared.set(asset.key, sprite);
       } catch (error) {
         console.warn(`Sprite indisponível, usando fallback: ${asset.path}`, error);
       } finally {
