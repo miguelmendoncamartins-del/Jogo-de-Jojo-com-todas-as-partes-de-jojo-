@@ -19,6 +19,8 @@ O workflow `.github/workflows/deploy.yml` executa `actions/configure-pages`, rod
 - `F`: interagir com a pista quando estiver perto do marcador
 - Botão **CONTINUAR**: avançar cenas, exploração, objetivos e consequências
 - `E` ou o botão **ASSISTÊNCIA**: chamar aliado durante a fase 2 da batalha secreta
+- Em telas de celular, um joystick virtual controla a movimentação e o botão **ATACAR** executa o golpe básico. Os poderes também podem ser ativados tocando nos botões da interface.
+- O jogo seleciona os controles táteis ou de teclado conforme o tamanho da janela e o tipo de ponteiro; redimensionar a tela atualiza a seleção.
 - Botão `♪`: ativar ou silenciar efeitos sonoros
 
 ### Progressão
@@ -35,7 +37,7 @@ O Phaser Arcade movimenta protagonista e inimigos com hitboxes reais, apresenta 
 
 O registro `sprite-assets.js` associa protagonistas a `Jojo-Sprite/Protagonista`, chefes finais a `Chefe-Final`, antagonistas a `Boss-Secundário`, aliados a `Aliados-do-Protagonista` e DIO Over Heaven a `Chefe-Secreto`. A busca ignora diferenças entre maiúsculas, acentos, espaços e sufixos comuns; também inclui aliases para nomes como `JotaroAnime3`, `Johnny_anime_png`, `Wii A Zeppiin` e `Wonder Of You + Toru`. Se não encontra correspondência na pasta esperada, mantém o fallback em vez de mostrar outra pessoa.
 
-Os arquivos com extensão `.jpeg` são carregados conforme a assinatura real (JPEG, PNG ou WebP). Retratos com fundo claro têm apenas os pixels claros conectados às bordas removidos durante a preparação; os arquivos originais não são alterados. A preparação reduz cada imagem a uma grade pequena e amplia com vizinho mais próximo, criando o acabamento pixelado. O personagem ganha quadros de idle/ataque e efeitos de movimento na arena. Nas Partes 3–9, um Stand pixelado animado acompanha o protagonista.
+Os arquivos com extensão `.jpeg` são carregados conforme a assinatura real (JPEG, PNG ou WebP). Retratos com fundo claro têm apenas os pixels claros conectados às bordas removidos durante a preparação; os arquivos originais não são alterados. A preparação reduz cada imagem a uma grade pequena e amplia com vizinho mais próximo, criando o acabamento pixelado. Idle, caminhada e ataque usam ciclos de quadros separados; a caminhada repete enquanto há movimento e não troca para um quadro de ataque, evitando que partes desse quadro apareçam durante o deslocamento. Cada personagem recebe uma fase própria de idle. Habilidades especiais usam efeitos sintetizados por habilidade quando o áudio está ligado. Nas Partes 3–9, um Stand pixelado animado acompanha o protagonista.
 
 Diálogos de entrada, encontro e vitória avançam automaticamente após cinco segundos; o botão permite avançar antes. O botão de áudio ativa efeitos sintetizados e uma trilha de batalha original gerada localmente pelo Web Audio. Não há gravações da trilha sonora oficial no repositório.
 

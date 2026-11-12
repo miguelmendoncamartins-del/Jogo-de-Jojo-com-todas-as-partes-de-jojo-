@@ -54,13 +54,12 @@
             <div class="arena-toast" id="arena-toast" aria-live="polite"></div>
             <div class="canvas-hint" id="canvas-hint">W A S D MOVER <span>·</span> J GOLPEAR <span>·</span> 1–4 PODERES <span>·</span> F INTERAGIR <span>·</span> E ASSISTIR</div>
             <button class="interact-button" id="interact-button" type="button" hidden>INVESTIGAR</button>
-            <div class="touch-controls" role="group" aria-label="Direcional para movimentar o personagem">
-              <button type="button" data-touch-key="w" aria-label="Mover para cima">▲</button>
-              <button type="button" data-touch-key="a" aria-label="Mover para a esquerda">◀</button>
-              <button type="button" data-touch-key="s" aria-label="Mover para baixo">▼</button>
-              <button type="button" data-touch-key="d" aria-label="Mover para a direita">▶</button>
+            <div class="touch-controls">
+              <div class="touch-joystick" id="touch-joystick" role="application" aria-label="Joystick virtual para movimentar o personagem">
+                <span class="joystick-knob" id="joystick-knob"></span>
+              </div>
             </div>
-            <button class="attack-button" id="attack-button" type="button" aria-label="Atacar o oponente">⚔ ATACAR <span>J</span></button>
+            <button class="attack-button" id="attack-button" type="button" aria-label="Executar ataque básico">⚔ ATACAR <span>J</span></button>
           </div>
 
           <div class="fighter-hud">

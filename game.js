@@ -1,6 +1,6 @@
 const Phaser = globalThis.Phaser;
 import { campaigns, getCampaignForCharacter } from './campaigns.js';
-import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset } from './sprite-assets.js';
+import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset, spriteAnimationFrame } from './sprite-assets.js';
 import {
   normalizeSave,
   STORY_PHASES,
@@ -164,12 +164,13 @@ const state = {
   secretRunPhase: null,
   secretCampaignId: null,
   jotaroAwakened: false,
-  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
+  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
   enemies: [],
   cooldowns: {},
   effects: [],
   particles: [],
   keys: new Set(),
+  touchAxis: { x: 0, y: 0 },
   elapsed: 0,
   attackCooldown: 0,
   invulnerable: 0,
@@ -908,7 +909,9 @@ function resetBattle(mode = state.mode) {
   state.secretRunPhase = null;
   state.secretCampaignId = null;
   state.jotaroAwakened = false;
-  state.player = { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
+  state.player = { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
+  state.touchAxis = { x: 0, y: 0 };
+  releaseJoystick();
   state.cooldowns = {};
   state.effects = [];
   state.particles = [];
@@ -1039,6 +1042,30 @@ function playTone(frequency, duration = 0.07) {
   } catch { /* Audio is optional; combat remains playable without it. */ }
 }
 
+function playAbilitySfx(character, skill) {
+  if (!state.sound) return;
+  try {
+    audioContext ||= new AudioContext();
+    const identity = `${character.id}:${skill.id}`;
+    const hash = [...identity].reduce((value, letter) => (value * 31 + letter.charCodeAt(0)) >>> 0, 7);
+    const now = audioContext.currentTime;
+    const duration = skill.tier === 'supreme' || skill.tier === 'awakening' ? 0.32 : 0.2;
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = skill.type === 'melee' ? 'square' : 'triangle';
+    oscillator.frequency.setValueAtTime(190 + (hash % 430), now);
+    oscillator.frequency.exponentialRampToValueAtTime(95 + (hash % 110), now + duration);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(skill.tier === 'supreme' || skill.tier === 'awakening' ? 0.09 : 0.055, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  } catch (error) {
+    console.warn('Efeito sonoro da habilidade indisponível.', error);
+  }
+}
+
 function playCharacterSfx(character, skill = null) {
   if (!state.sound || !character) return;
   const characterId = character.id || String(character.name || '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, '');
@@ -1148,6 +1175,7 @@ function useSkill(slot) {
   state.screenShake = skill.tier === 'supreme' || skill.tier === 'awakening' ? 7 : 3;
   activateSkill(skill);
   if (isOverHeaven() && slot === 0) playNamedSfx('muda_muda_muda_sound_effect.mp3');
+  playAbilitySfx(character, skill);
   updateInterface(true);
 }
 
@@ -1425,26 +1453,27 @@ function update(dt, timestamp) {
       player.x = player.physicsZone.x;
       player.y = player.physicsZone.y;
     }
-    let moveX = Number(state.keys.has('d') || state.keys.has('arrowright')) - Number(state.keys.has('a') || state.keys.has('arrowleft'));
-    let moveY = Number(state.keys.has('s') || state.keys.has('arrowdown')) - Number(state.keys.has('w') || state.keys.has('arrowup'));
+    let moveX = Number(state.keys.has('d') || state.keys.has('arrowright')) - Number(state.keys.has('a') || state.keys.has('arrowleft')) + state.touchAxis.x;
+    let moveY = Number(state.keys.has('s') || state.keys.has('arrowdown')) - Number(state.keys.has('w') || state.keys.has('arrowup')) + state.touchAxis.y;
     if (player.statuses.freeze > 0) moveX = moveY = 0;
     if (player.statuses.confuse > 0) { moveX *= -1; moveY *= -1; }
-    const magnitude = Math.hypot(moveX, moveY) || 1;
-    moveX /= magnitude;
-    moveY /= magnitude;
+    const magnitude = Math.hypot(moveX, moveY);
+    if (magnitude > 1) { moveX /= magnitude; moveY /= magnitude; }
+    player.isMoving = magnitude > 0.12;
     if (player.body) {
-      player.body.setVelocity(moveX * 190 * (player.statuses.slow > 0 ? 0.55 : 1), moveY * 155 * (player.statuses.slow > 0 ? 0.55 : 1));
-    } else if (moveX || moveY) {
+      player.body.setVelocity(player.isMoving ? moveX * 190 * (player.statuses.slow > 0 ? 0.55 : 1) : 0, player.isMoving ? moveY * 155 * (player.statuses.slow > 0 ? 0.55 : 1) : 0);
+    } else if (player.isMoving) {
       const speedScale = player.statuses.slow > 0 ? 0.55 : 1;
       player.x += moveX * 190 * speedScale * dt;
       player.y += moveY * 155 * speedScale * dt;
     }
-    if (moveX || moveY) {
+    if (player.isMoving) {
       player.facingX = moveX;
       player.facingY = moveY;
     }
     if (state.fightActive) for (const enemy of state.enemies) updateEnemy(enemy, dt);
   } else {
+    state.player.isMoving = false;
     state.player.body?.setVelocity(0, 0);
     state.enemies.forEach((enemy) => enemy.body?.setVelocity(0, 0));
   }
@@ -1781,17 +1810,29 @@ function getPreparedSprite(spriteAsset) {
   return spriteAsset ? preparedSprites.get(spriteAsset.key) || null : null;
 }
 
-function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null) {
+function animationPhase(identity) {
+  return [...String(identity)].reduce((value, letter) => (value + letter.charCodeAt(0)) % 4, 0);
+}
+
+function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null, moving = false, animationIdentity = '') {
   const spriteScale = 1.8 * scale;
   const attacking = animation > 0;
+  const walking = moving && !attacking;
   const attackMotion = Math.sin(state.elapsed * 34);
-  const bob = attacking ? Math.sin(state.elapsed * 26) * 2 : Math.sin(state.elapsed * 4 + x) * 0.6;
+  const phase = animationPhase(animationIdentity || (isPlayer ? selectedCharacter().id : 'enemy'));
+  const mode = attacking ? 'attack' : moving ? 'walk' : 'idle';
+  const frame = spriteAnimationFrame(mode, state.elapsed, phase);
+  const step = [-1, 0, 1, 0][frame];
+  const idleBob = [0, -0.5, -1, -0.5][frame];
+  const walkBob = [0, -1.5, 0, -1.5][frame];
+  const bob = attacking ? Math.sin(state.elapsed * 26) * 2 : walking ? walkBob[frame] : idleBob;
   ctx.save();
-  ctx.translate(Math.round(x), Math.round(y + bob));
+  ctx.translate(Math.round(x + (walking ? step * 1.2 : 0)), Math.round(y + bob));
   ctx.scale(facingX < 0 ? -1 : 1, 1);
+  if (walking) ctx.rotate(step * 0.018);
   ctx.imageSmoothingEnabled = false;
   const baseSprite = getPreparedSprite(spriteAsset);
-  const sprite = baseSprite?.isPixelSheet && attacking && baseSprite.attackFrame ? baseSprite.attackFrame : baseSprite;
+  const sprite = baseSprite;
   if (sprite) {
     const ratio = sprite.width / sprite.height;
     const targetHeight = (sprite.isPixelSheet || baseSprite.isPixelSheet ? 120 : 104) * scale;
@@ -1802,7 +1843,6 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
       ctx.rotate(attackMotion * 0.035);
     }
     const drawnHeight = Math.min(targetHeight, targetWidth / ratio);
-    const frame = Math.floor(state.elapsed * (attacking ? 12 : 5)) % 4;
     const scalePulse = attacking ? 1 + (frame % 2) * 0.035 : 1;
     ctx.fillStyle = '#10151288';
     ctx.beginPath();
@@ -1848,8 +1888,8 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
   ctx.fillStyle = hitFlash > 0 ? '#ffffff' : color;
   ctx.fillRect(-5 * spriteScale, -13 * spriteScale, 11 * spriteScale, 19 * spriteScale);
   ctx.fillStyle = '#242329';
-  ctx.fillRect(-8 * spriteScale, 5 * spriteScale, 6 * spriteScale, 7 * spriteScale);
-  ctx.fillRect(2 * spriteScale, 5 * spriteScale, 6 * spriteScale, 7 * spriteScale);
+  ctx.fillRect((-8 - (walking ? step : 0)) * spriteScale, 5 * spriteScale, 6 * spriteScale, 7 * spriteScale);
+  ctx.fillRect((2 + (walking ? step : 0)) * spriteScale, 5 * spriteScale, 6 * spriteScale, 7 * spriteScale);
   ctx.fillStyle = '#ded0ae';
   ctx.fillRect(-6 * spriteScale, -24 * spriteScale, 12 * spriteScale, 12 * spriteScale);
   ctx.fillStyle = '#bc9c79';
@@ -1861,7 +1901,7 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
   ctx.fillRect(-6 * spriteScale, -31 * spriteScale, 13 * spriteScale, 4 * spriteScale);
   ctx.fillStyle = '#eee1c0';
   ctx.fillRect(-7 * spriteScale, -17 * spriteScale, 14 * spriteScale, 2 * spriteScale);
-  const armOffset = animation ? Math.sin(state.elapsed * 40) * 3 : 0;
+  const armOffset = attacking ? Math.sin(state.elapsed * 40) * 3 : walking ? -step * 2 : 0;
   ctx.fillStyle = hitFlash ? '#fff' : color;
   ctx.fillRect(6 * spriteScale, -11 * spriteScale + armOffset, 8 * spriteScale, 5 * spriteScale);
   ctx.fillStyle = '#ded0ae';
@@ -1977,6 +2017,21 @@ function drawEffects() {
       ctx.beginPath();
       ctx.ellipse(effect.x, effect.y, Math.max(5, effect.radius * (0.68 + progress * 0.45)), Math.max(4, effect.radius * (0.43 + progress * 0.45)), 0, 0, Math.PI * 2);
       ctx.stroke();
+      if (!['basic', 'impact', 'trap', 'string', 'rain', 'heal'].includes(effect.type)) {
+        const glyphPhase = animationPhase(effect.type) * 0.35 + progress * Math.PI * 2;
+        const glyphCount = 4 + animationPhase(effect.type);
+        ctx.globalAlpha = 0.72 * fade;
+        ctx.lineWidth = 2;
+        for (let glyph = 0; glyph < glyphCount; glyph += 1) {
+          const angle = glyphPhase + glyph * Math.PI * 2 / glyphCount;
+          const inner = effect.radius * (0.18 + (glyph % 2) * 0.08);
+          const outer = effect.radius * (0.42 + progress * 0.18);
+          ctx.beginPath();
+          ctx.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner * 0.7);
+          ctx.lineTo(effect.x + Math.cos(angle + 0.12) * outer, effect.y + Math.sin(angle + 0.12) * outer * 0.7);
+          ctx.stroke();
+        }
+      }
       if (effect.type.includes('reality') || effect.type.includes('overwrite') || effect.type.includes('mobius')) {
         ctx.beginPath();
         ctx.moveTo(effect.x - effect.radius * 0.35, effect.y - effect.radius * 0.35);
@@ -2012,7 +2067,7 @@ function draw() {
   if (state.screenShake > 0) ctx.translate((Math.random() - 0.5) * state.screenShake, (Math.random() - 0.5) * state.screenShake);
   drawBackground();
   const drawables = state.enemies.filter((enemy) => enemy.hp > 0).map((enemy) => ({ y: enemy.y, draw: () => {
-    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, (enemy.attackTimer ?? 9) < 0.35 ? 1 : 0, enemy.spriteAsset);
+    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, (enemy.attackTimer ?? 9) < 0.35 ? 1 : 0, enemy.spriteAsset, Boolean(enemy.body?.velocity?.x || enemy.body?.velocity?.y), enemy.id);
     if (enemy.empowered) {
       ctx.globalAlpha = 0.4 + Math.sin(state.elapsed * 7) * 0.13;
       ctx.strokeStyle = enemy.id === 'dio-heaven' ? '#f0d75a' : '#e18dca';
@@ -2042,7 +2097,7 @@ function draw() {
       drawFighter(state.player.x + 24, state.player.y - 8, '#edc857', false, 0.88, state.player.facingX, 0, state.player.attackTimer);
       ctx.globalAlpha = 1;
     }
-    drawFighter(state.player.x, state.player.y, state.player.hitFlash > 0 ? '#fff' : character.color, true, 1, state.player.facingX, state.player.hitFlash, state.player.attackTimer, character.spriteAsset);
+    drawFighter(state.player.x, state.player.y, state.player.hitFlash > 0 ? '#fff' : character.color, true, 1, state.player.facingX, state.player.hitFlash, state.player.attackTimer, character.spriteAsset, state.player.isMoving, character.id);
     ctx.fillStyle = '#fff6cf';
     ctx.font = '9px "DM Mono", monospace';
     ctx.textAlign = 'center';
@@ -2155,28 +2210,57 @@ function handleKeyDown(event) {
   if (!event.repeat && key === 'e') requestAssist();
 }
 function handleKeyUp(event) { state.keys.delete(event.key.toLowerCase()); }
-const touchPointers = new Map();
-document.querySelectorAll('[data-touch-key]').forEach((button) => {
-  button.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    button.setPointerCapture(event.pointerId);
-    const key = button.dataset.touchKey;
-    touchPointers.set(event.pointerId, key);
-    state.keys.add(key);
-  });
-  const releaseTouchKey = (event) => {
-    const key = touchPointers.get(event.pointerId);
-    if (!key) return;
-    state.keys.delete(key);
-    touchPointers.delete(event.pointerId);
-  };
-  button.addEventListener('pointerup', releaseTouchKey);
-  button.addEventListener('pointercancel', releaseTouchKey);
-  button.addEventListener('lostpointercapture', releaseTouchKey);
+const joystick = $('#touch-joystick');
+const joystickKnob = $('#joystick-knob');
+let joystickPointer = null;
+function moveJoystick(event) {
+  if (!joystick || joystickPointer !== event.pointerId) return;
+  const bounds = joystick.getBoundingClientRect();
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  const maxRadius = bounds.width * 0.31;
+  const dx = event.clientX - centerX;
+  const dy = event.clientY - centerY;
+  const distance = Math.hypot(dx, dy);
+  const scale = distance > maxRadius ? maxRadius / distance : 1;
+  const offsetX = dx * scale;
+  const offsetY = dy * scale;
+  state.touchAxis = distance < 8 ? { x: 0, y: 0 } : { x: offsetX / maxRadius, y: offsetY / maxRadius };
+  joystickKnob.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
+}
+function releaseJoystick(event) {
+  if (event && joystickPointer !== event.pointerId) return;
+  joystickPointer = null;
+  state.touchAxis = { x: 0, y: 0 };
+  if (joystick && joystickKnob) {
+    joystick.classList.remove('active');
+    joystickKnob.style.transform = 'translate(-50%, -50%)';
+  }
+}
+joystick?.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  joystickPointer = event.pointerId;
+  joystick.setPointerCapture(event.pointerId);
+  joystick.classList.add('active');
+  moveJoystick(event);
 });
+joystick?.addEventListener('pointermove', moveJoystick);
+joystick?.addEventListener('pointerup', releaseJoystick);
+joystick?.addEventListener('pointercancel', releaseJoystick);
+joystick?.addEventListener('lostpointercapture', releaseJoystick);
+const deviceControlQuery = window.matchMedia('(pointer: coarse), (max-width: 760px)');
+function updateDeviceControls() {
+  const touchMode = deviceControlQuery.matches;
+  document.body.dataset.controlMode = touchMode ? 'touch' : 'keyboard';
+  $('#game').setAttribute('aria-label', touchMode
+    ? 'Arena top-down. Use o joystick virtual para mover, toque em Atacar para golpear e nos poderes para usar habilidades.'
+    : 'Arena de combate top-down. Use W A S D ou as setas para mover, J para atacar e 1 a 4 para usar poderes.');
+}
+updateDeviceControls();
+deviceControlQuery.addEventListener('change', updateDeviceControls);
 window.addEventListener('blur', () => {
   state.keys.clear();
-  touchPointers.clear();
+  releaseJoystick();
 });
 $('#power-row').addEventListener('click', (event) => {
   const button = event.target.closest('[data-slot]');

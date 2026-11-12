@@ -277,6 +277,13 @@ export function prepareSpriteImage(image, maxWidth = 256, maxHeight = 384) {
   return depthCanvas;
 }
 
+export function spriteAnimationFrame(mode, elapsed, phase = 0) {
+  const frameRates = { idle: 3, walk: 9, attack: 15 };
+  const frameRate = frameRates[mode];
+  if (!frameRate) throw new RangeError(`Animação de sprite inválida: ${mode}`);
+  return ((Math.floor(Math.max(0, elapsed) * frameRate + phase) % 4) + 4) % 4;
+}
+
 function imageMimeType(bytes) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';

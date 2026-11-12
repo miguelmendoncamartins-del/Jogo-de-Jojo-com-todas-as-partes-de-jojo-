@@ -58,3 +58,14 @@ test('chefes, antagonistas, aliados e DIO Over Heaven usam as pastas designadas'
 test('não substitui nomes sem correspondência por retratos de outro personagem', () => {
   assert.equal(spriteRegistry.resolveSpriteAsset('protagonist', 'character-without-art'), null);
 });
+
+test('caminhada repete quatro quadros sem reutilizar o ciclo de ataque', () => {
+  const { spriteAnimationFrame } = spriteRegistry;
+  const walkFrames = Array.from({ length: 4 }, (_, index) => spriteAnimationFrame('walk', index / 9));
+
+  assert.deepEqual(walkFrames, [0, 1, 2, 3]);
+  assert.equal(spriteAnimationFrame('walk', 4 / 9), walkFrames[0]);
+  assert.equal(spriteAnimationFrame('attack', 1 / 15), 1);
+  assert.equal(spriteAnimationFrame('idle', 1 / 3), 1);
+  assert.throws(() => spriteAnimationFrame('run', 0), RangeError);
+});
