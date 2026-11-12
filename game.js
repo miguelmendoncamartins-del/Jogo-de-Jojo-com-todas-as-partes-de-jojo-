@@ -188,6 +188,37 @@ let toastTimeout;
 let unlockTimeout;
 let dialogueTimeout;
 let activeDialogueSignature = '';
+const characterSfx = new Map();
+const characterSfxPlayedAt = new Map();
+const CHARACTER_SFX = Object.freeze({
+  jonathan: 'jojo-punch.mp3',
+  joseph: 'jojos-bizarre-adventure-ay-ay-ay-ay-_-sound-effect.mp3',
+  jotaro: 'jojo-punch.mp3',
+  josuke4: 'dojyan.mp3',
+  giorno: '7-page-muda-giorno.mp3',
+  jolyne: 'jojo-punch.mp3',
+  johnny: 'tusk-chimimi.mp3',
+  gappy: 'dojyan.mp3',
+  jodio: 'jojo-punch.mp3',
+  kakyoin: 'jojo-punch.mp3',
+  dio: 'dio-wryyy.mp3',
+  dio1: 'dio-wryyy.mp3',
+  dio3: 'dio-wryyy.mp3',
+  'dio-heaven': 'dio-wryyy.mp3',
+});
+const ZA_WARUDO_SFX = 'za-warudo-toki-wo-tomare_WJVdsYt.mp3';
+let dioHurtSfxCount = 0;
+function playNamedSfx(file) {
+  if (!state.sound) return;
+  let audio = characterSfx.get(file);
+  if (!audio) {
+    const modulePath = new URL(import.meta.url).pathname;
+    const sfxDirectory = modulePath.includes('/public/game/') || modulePath.endsWith('/game/game.js') ? './SFX/' : './Jojo-Sprite/SFX/';
+    audio = new Audio(new URL(`${sfxDirectory}${file}`, import.meta.url).href);
+    audio.preload = 'auto'; audio.volume = 0.65; characterSfx.set(file, audio);
+  }
+  audio.currentTime = 0; audio.play().catch(() => {});
+}
 
 function selectedCharacter() { return characters[state.selected]; }
 function selectedCampaign() { return getCampaignForCharacter(selectedCharacter().id); }
@@ -196,6 +227,9 @@ function currentCampaignStage(characterId = selectedCharacter().id) {
   const campaign = getCampaignForCharacter(characterId);
   const progress = currentCampaignProgress(characterId);
   return campaign && progress ? campaign.stages[progress.stageIndex] || null : null;
+}
+function isPart3Dio(enemy) {
+  return selectedCampaign()?.id === 'jotaro' && normalizeVillainName(enemy?.name || '') === 'dio';
 }
 function hasCampaignAccess(characterId) { return save.story.unlockedCampaignIds.includes(characterId); }
 function isOverHeaven() { return state.mode === 'final' && state.secretPhase === 2 && state.jotaroAwakened && selectedCharacter().id === 'jotaro'; }
@@ -604,6 +638,7 @@ function continueStory() {
         showUnlock(message);
       }
       if (wasFinalStage) {
+        playNamedSfx('untitled_1071.mp3');
         // completeStage moves the campaign to CAMPAIGN_COMPLETE; the unlock
         // helper checks that phase before granting access to the next part.
         unlockCampaignAfterCompletion(save, campaign, campaigns);
@@ -738,6 +773,7 @@ function enemySpriteAsset(enemy, campaign = selectedCampaign()) {
 function createCampaignBoss(stage = state.storyStage) {
   const campaign = selectedCampaign();
   const templates = stage?.enemies || [currentBossTemplate()];
+  dioHurtSfxCount = 0;
   state.enemies = templates.map((template) => ({
     ...template,
     power: stage?.id === campaign.stages.at(-1)?.id
@@ -757,8 +793,12 @@ function createCampaignBoss(stage = state.storyStage) {
   }));
   attachPhysicsBodies();
   loadSpritesInBackground(state.enemies.map((enemy) => enemy.spriteAsset));
+  const names = templates.map((enemy) => enemy.name.toLowerCase()).join(' ');
+  if (names.includes('funny valentine')) playNamedSfx('dojyan.mp3');
+  if (['wamuu', 'esidisi', 'kars'].some((name) => names.includes(name))) playNamedSfx('jojos-bizarre-adventure-ay-ay-ay-ay-_-sound-effect.mp3');
 }
 function createFinalBosses(secondPhase = false) {
+  dioHurtSfxCount = 0;
   const multiplier = secondPhase ? 3 : 1;
   state.enemies = finalBosses.map((boss) => ({
     ...boss,
@@ -788,6 +828,7 @@ function currentSecretCampaign() { return campaigns.find((campaign) => campaign.
 function createSecretRevengeBoss() {
   const campaign = currentSecretCampaign();
   if (!campaign) return false;
+  dioHurtSfxCount = 0;
   const candidate = campaign.stages.flatMap((stage) => stage.enemies).find((enemy) => enemy.name.toLowerCase() === campaign.secretBoss.toLowerCase());
   const fallback = campaign.stages.at(-1).enemies.at(-1);
   const encounter = createSecretEncounter(campaign, candidate || fallback);
@@ -861,6 +902,7 @@ function attachPhysicsBodies() {
   state.enemies.forEach((enemy) => attachBody(enemy, 36, 42));
 }
 function resetBattle(mode = state.mode) {
+  dioHurtSfxCount = 0;
   state.mode = mode;
   state.secretPhase = 0;
   state.secretRunPhase = null;
@@ -997,6 +1039,26 @@ function playTone(frequency, duration = 0.07) {
   } catch { /* Audio is optional; combat remains playable without it. */ }
 }
 
+function playCharacterSfx(character, skill = null) {
+  if (!state.sound || !character) return;
+  const characterId = character.id || String(character.name || '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, '');
+  const file = skill?.effect === 'time-stop' ? ZA_WARUDO_SFX : CHARACTER_SFX[characterId];
+  if (!file) return;
+  const now = performance.now();
+  const throttle = file === ZA_WARUDO_SFX ? 1200 : 240;
+  if (now - (characterSfxPlayedAt.get(file) || 0) < throttle) return;
+  characterSfxPlayedAt.set(file, now);
+  let audio = characterSfx.get(file);
+  if (!audio) {
+    audio = new Audio(new URL(`./SFX/${file}`, document.baseURI).href);
+    audio.preload = 'auto';
+    audio.volume = 0.55;
+    characterSfx.set(file, audio);
+  }
+  audio.currentTime = 0;
+  audio.play().catch((error) => console.warn(`Efeito sonoro indisponível: ${file}`, error));
+}
+
 function playThemeStep() {
   if (!state.sound) return;
   // Short, original synthesized battle motif, generated locally with Web Audio.
@@ -1048,6 +1110,7 @@ function performBasicAttack() {
   }
   spawnBurst(player.x + player.facingX * 62, player.y + player.facingY * 62, hit ? '#f0e9b2' : '#d3e85a', 'impact');
   playTone(hit ? 145 : 95);
+  playNamedSfx('jojo-punch.mp3');
   if (hit) checkBattleEnd();
 }
 
@@ -1075,10 +1138,16 @@ function useSkill(slot) {
     return;
   }
   state.player.energy -= skill.energy;
+  const character = selectedCharacter();
+  if (character.id === 'giorno' && slot === 1) playNamedSfx('7-page-muda-giorno.mp3');
+  if (character.id === 'giorno' && skill.effect === 'nullify') playNamedSfx('jojos-bizarre-adventure-ay-ay-ay-ay-_-sound-effect.mp3');
+  if (character.id === 'johnny' && slot < 3) playNamedSfx('tusk-chimimi.mp3');
+  if (skill.effect === 'time-stop' && character.id === 'dio') playNamedSfx(ZA_WARUDO_SFX);
   state.cooldowns[skill.id] = skill.cooldown / 1000;
   state.player.attackTimer = skill.duration;
   state.screenShake = skill.tier === 'supreme' || skill.tier === 'awakening' ? 7 : 3;
   activateSkill(skill);
+  if (isOverHeaven() && slot === 0) playNamedSfx('muda_muda_muda_sound_effect.mp3');
   updateInterface(true);
 }
 
@@ -1151,7 +1220,7 @@ function activateSkill(skill) {
       if (enemy.hp <= 0 || !isInFacingRange(enemy, skill.range, skill.effect === 'interrupt' ? 0.1 : 0.72)) continue;
       damageEnemy(enemy, skill.damage, skill.animation, skill.effect === 'guard-break');
       affected += 1;
-      if (['interrupt', 'time-stop', 'overwrite', 'final-impact', 'dimensional-pierce'].includes(skill.effect)) enemy.stun = Math.max(enemy.stun, skill.effect === 'time-stop' ? Math.min(skill.duration, 2.5) : 1.4);
+      if (['interrupt', 'time-stop', 'overwrite', 'final-impact', 'dimensional-pierce'].includes(skill.effect)) enemy.stun = Math.max(enemy.stun, skill.effect === 'time-stop' ? skill.duration : 1.4);
       if (skill.effect === 'slow') enemy.slow = Math.max(enemy.slow, skill.duration);
       if (skill.effect === 'root') enemy.stun = Math.max(enemy.stun, skill.duration);
       if (skill.effect === 'overwrite') enemy.marked = 2.2;
@@ -1185,6 +1254,7 @@ function damageEnemy(enemy, amount, kind, guardBreak = false) {
   if (enemy.hp <= 0) return;
   const multiplier = enemy.marked > 0 ? 1.12 : 1;
   enemy.hp = Math.max(0, enemy.hp - amount * multiplier);
+  if (isPart3Dio(enemy) && dioHurtSfxCount < 3) { dioHurtSfxCount += 1; playNamedSfx('dio-wryyy.mp3'); }
   enemy.hitFlash = 0.22;
   if (guardBreak) enemy.stun = Math.max(enemy.stun, 1.3);
   const color = kind.includes('rain') ? '#c6edf1' : isOverHeaven() ? '#f0d75a' : selectedCharacter().color;
@@ -1301,6 +1371,7 @@ function requestAssist() {
   }
   showToast(`${helper.id === 'jotaro' ? 'STAR PLATINUM: OVER HEAVEN' : helper.name.toUpperCase()} · ${assistanceSkill.name.toUpperCase()}!`);
   playTone(420, 0.11);
+  playCharacterSfx(helper, assistanceSkill);
 }
 
 function update(dt, timestamp) {
@@ -1415,7 +1486,7 @@ function updateEnemy(enemy, dt) {
         const damage = Math.round((enemy.attackDamage || (enemy.empowered ? 24 : 8)) * (profile.damage || 1));
         player.hp = Math.max(0, player.hp - damage);
         const statuses = player.statuses;
-        if (profile.status === 'freeze') statuses.freeze = Math.max(statuses.freeze, enemy.power === 'time-stop' ? 0.62 : 0.35);
+        if (profile.status === 'freeze') statuses.freeze = Math.max(statuses.freeze, isPart3Dio(enemy) && enemy.power === 'time-stop' ? 9 : enemy.power === 'time-stop' ? 0.62 : 0.35);
         if (profile.status === 'slow') statuses.slow = Math.max(statuses.slow, 1.6);
         if (profile.status === 'confuse') statuses.confuse = Math.max(statuses.confuse, 0.9);
         if (profile.status === 'burn') { statuses.burn = Math.max(statuses.burn, 2.2); statuses.burnTick = Math.min(statuses.burnTick || 0.65, 0.65); }
@@ -1462,6 +1533,8 @@ function updateEnemy(enemy, dt) {
     enemy.attackTarget = { x: player.x, y: player.y, radius, power: enemy.power };
     enemy.attackTimer = (enemy.attackInterval || (enemy.empowered ? 1.05 : 1.45)) * (powerProfile.interval || 1);
     state.effects.push({ type: `enemy-power-${enemy.power || enemy.pattern}`, x: player.x, y: player.y, radius, time: duration, maxTime: duration });
+        if (isPart3Dio(enemy) || enemy.id === 'dio-heaven') playNamedSfx('muda_muda_muda_sound_effect.mp3');
+        if (isPart3Dio(enemy) && enemy.power === 'time-stop') playNamedSfx(ZA_WARUDO_SFX);
   }
 }
 
@@ -1710,26 +1783,48 @@ function getPreparedSprite(spriteAsset) {
 
 function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null) {
   const spriteScale = 1.8 * scale;
-  const bob = animation ? Math.sin(state.elapsed * 26) * 2 : Math.sin(state.elapsed * 4 + x) * 0.6;
+  const attacking = animation > 0;
+  const attackMotion = Math.sin(state.elapsed * 34);
+  const bob = attacking ? Math.sin(state.elapsed * 26) * 2 : Math.sin(state.elapsed * 4 + x) * 0.6;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y + bob));
   ctx.scale(facingX < 0 ? -1 : 1, 1);
   ctx.imageSmoothingEnabled = false;
-  const sprite = getPreparedSprite(spriteAsset);
+  const baseSprite = getPreparedSprite(spriteAsset);
+  const sprite = baseSprite?.isPixelSheet && attacking && baseSprite.attackFrame ? baseSprite.attackFrame : baseSprite;
   if (sprite) {
     const ratio = sprite.width / sprite.height;
-    const targetHeight = 104 * scale;
-    const targetWidth = Math.min(targetHeight * ratio, 78 * scale);
+    const targetHeight = (sprite.isPixelSheet || baseSprite.isPixelSheet ? 120 : 104) * scale;
+    const targetWidth = Math.min(targetHeight * ratio, (baseSprite.isPixelSheet ? 260 : 78) * scale);
+    if (baseSprite.isPixelSheet && !animation) { const breathe = 1 + Math.sin(state.elapsed * 5 + x) * 0.02; ctx.scale(1 / breathe, breathe); }
+    if (baseSprite.isPixelSheet && attacking) {
+      ctx.translate(4 + Math.max(0, attackMotion) * 7, 0);
+      ctx.rotate(attackMotion * 0.035);
+    }
     const drawnHeight = Math.min(targetHeight, targetWidth / ratio);
-    const frame = Math.floor(state.elapsed * (animation ? 12 : 5)) % 4;
-    const scalePulse = animation ? 1 + (frame % 2) * 0.035 : 1;
+    const frame = Math.floor(state.elapsed * (attacking ? 12 : 5)) % 4;
+    const scalePulse = attacking ? 1 + (frame % 2) * 0.035 : 1;
     ctx.fillStyle = '#10151288';
     ctx.beginPath();
     ctx.ellipse(0, 9 * spriteScale, 13 * spriteScale, 4 * spriteScale, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 0.9;
     const frameBob = frame === 1 ? -2 : frame === 3 ? 1 : 0;
+    if (baseSprite.isPixelSheet && attacking) {
+      ctx.globalAlpha = 0.2;
+      ctx.drawImage(sprite, -targetWidth / 2 - 11, -drawnHeight + 8 + frameBob, targetWidth, drawnHeight);
+      ctx.globalAlpha = 0.32;
+      ctx.drawImage(sprite, -targetWidth / 2 - 6, -drawnHeight + 8 + frameBob, targetWidth, drawnHeight);
+    }
+    ctx.globalAlpha = 0.9;
     ctx.drawImage(sprite, -targetWidth * scalePulse / 2, -drawnHeight * scalePulse + 8 + frameBob, targetWidth * scalePulse, drawnHeight * scalePulse);
+    if (baseSprite.isPixelSheet && attacking) {
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = color;
+      ctx.fillRect(targetWidth * 0.22, -drawnHeight * 0.68, 11 * scale, 3 * scale);
+      ctx.fillStyle = '#f2dd6a';
+      ctx.fillRect(targetWidth * 0.28, -drawnHeight * 0.61, 7 * scale, 2 * scale);
+      ctx.globalAlpha = 0.9;
+    }
     if (hitFlash > 0) {
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = '#ffffff88';
@@ -1917,7 +2012,7 @@ function draw() {
   if (state.screenShake > 0) ctx.translate((Math.random() - 0.5) * state.screenShake, (Math.random() - 0.5) * state.screenShake);
   drawBackground();
   const drawables = state.enemies.filter((enemy) => enemy.hp > 0).map((enemy) => ({ y: enemy.y, draw: () => {
-    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, 0, enemy.spriteAsset);
+    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, (enemy.attackTimer ?? 9) < 0.35 ? 1 : 0, enemy.spriteAsset);
     if (enemy.empowered) {
       ctx.globalAlpha = 0.4 + Math.sin(state.elapsed * 7) * 0.13;
       ctx.strokeStyle = enemy.id === 'dio-heaven' ? '#f0d75a' : '#e18dca';
@@ -2017,6 +2112,7 @@ function updateInterface(force = false) {
     button.disabled = !unlocked;
     button.classList.toggle('locked', !unlocked);
   });
+  $('#interact-button').hidden = !(state.mode === 'campaign' && state.storyStage && currentCampaignProgress().phase === STORY_PHASES.OBJECTIVE_ACTIVE);
 }
 
 // Atualiza os botões no lugar: recriá-los a cada quadro fazia cliques se perderem.
@@ -2059,7 +2155,29 @@ function handleKeyDown(event) {
   if (!event.repeat && key === 'e') requestAssist();
 }
 function handleKeyUp(event) { state.keys.delete(event.key.toLowerCase()); }
-window.addEventListener('blur', () => state.keys.clear());
+const touchPointers = new Map();
+document.querySelectorAll('[data-touch-key]').forEach((button) => {
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    const key = button.dataset.touchKey;
+    touchPointers.set(event.pointerId, key);
+    state.keys.add(key);
+  });
+  const releaseTouchKey = (event) => {
+    const key = touchPointers.get(event.pointerId);
+    if (!key) return;
+    state.keys.delete(key);
+    touchPointers.delete(event.pointerId);
+  };
+  button.addEventListener('pointerup', releaseTouchKey);
+  button.addEventListener('pointercancel', releaseTouchKey);
+  button.addEventListener('lostpointercapture', releaseTouchKey);
+});
+window.addEventListener('blur', () => {
+  state.keys.clear();
+  touchPointers.clear();
+});
 $('#power-row').addEventListener('click', (event) => {
   const button = event.target.closest('[data-slot]');
   if (button && !button.disabled) useSkill(Number(button.dataset.slot));
@@ -2068,6 +2186,7 @@ $('#attack-button').addEventListener('click', () => {
   $('#game').focus({ preventScroll: true });
   performBasicAttack();
 });
+$('#interact-button').addEventListener('click', interactWithStoryObjective);
 $('#story-action').addEventListener('click', continueStory);
 document.querySelectorAll('.mode-button').forEach((button) => button.addEventListener('click', () => switchMode(button.dataset.mode)));
 $('#assist-button').addEventListener('click', requestAssist);

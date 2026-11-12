@@ -34,7 +34,7 @@
           </div>
 
           <div class="canvas-frame">
-            <div id="game" role="application" aria-label="Arena de combate top-down. Use W A S D para mover e J para atacar." tabindex="0"></div>
+            <div id="game" role="application" aria-label="Arena de combate top-down. Use W A S D ou o direcional na tela para mover." tabindex="0"></div>
             <aside class="story-panel" id="story-panel" aria-live="polite" aria-label="Progressão da campanha" hidden>
               <span class="story-kicker" id="story-kicker">CAMPANHA</span>
               <span class="story-location" id="story-location"></span>
@@ -53,6 +53,13 @@
             </div>
             <div class="arena-toast" id="arena-toast" aria-live="polite"></div>
             <div class="canvas-hint" id="canvas-hint">W A S D MOVER <span>·</span> J GOLPEAR <span>·</span> 1–4 PODERES <span>·</span> F INTERAGIR <span>·</span> E ASSISTIR</div>
+            <button class="interact-button" id="interact-button" type="button" hidden>INVESTIGAR</button>
+            <div class="touch-controls" role="group" aria-label="Direcional para movimentar o personagem">
+              <button type="button" data-touch-key="w" aria-label="Mover para cima">▲</button>
+              <button type="button" data-touch-key="a" aria-label="Mover para a esquerda">◀</button>
+              <button type="button" data-touch-key="s" aria-label="Mover para baixo">▼</button>
+              <button type="button" data-touch-key="d" aria-label="Mover para a direita">▶</button>
+            </div>
             <button class="attack-button" id="attack-button" type="button" aria-label="Atacar o oponente">⚔ ATACAR <span>J</span></button>
           </div>
 
