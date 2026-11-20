@@ -1,6 +1,6 @@
 const Phaser = globalThis.Phaser;
 import { campaigns, getCampaignForCharacter } from './campaigns.js';
-import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset, spriteAnimationFrame } from './sprite-assets.js';
+import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset, resolveSpriteAction, spriteAnimationFrame } from './sprite-assets.js';
 import {
   normalizeSave,
   STORY_PHASES,
@@ -1758,7 +1758,7 @@ function drawRoomColumns(theme, count = 6) {
 function drawSceneArchitecture(theme, kind, isFinal) {
   ctx.fillStyle = theme?.wall || '#343d37';
   ctx.fillRect(0, 0, canvas.width, 151);
-  if (['mansion', 'castle', 'hotel', 'casino', 'restaurant', 'studio', 'home'].includes(kind)) {
+  if (['mansion', 'castle', 'hotel', 'casino', 'restaurant', 'studio', 'home', 'school', 'tropical-villa'].includes(kind)) {
     drawWallWindows(theme, kind === 'casino' ? 100 : 74, 44, 26);
     ctx.fillStyle = '#171c19';
     ctx.fillRect(0, 112, canvas.width, 14);
@@ -1931,6 +1931,14 @@ function drawSceneProps(kind, theme) {
       ctx.fillStyle = kind === 'studio' ? '#795947' : '#8b6950';
       ctx.beginPath(); ctx.ellipse(x, y, 43, 21, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#d9c08a'; ctx.fillRect(x - 4, y - 4, 8, 8);
+    }
+  }
+  if (kind === 'school') {
+    for (const [x, y] of [[160, 246], [365, 250], [590, 246], [800, 250]]) {
+      ctx.fillStyle = '#252b28'; ctx.fillRect(x, y, 65, 36);
+      ctx.fillStyle = '#866d50'; ctx.fillRect(x + 3, y - 5, 59, 27);
+      ctx.fillStyle = '#d4c89e'; ctx.fillRect(x + 9, y + 5, 15, 11);
+      ctx.fillStyle = '#42382e'; ctx.fillRect(x + 5, y + 31, 4, 12); ctx.fillRect(x + 55, y + 31, 4, 12);
     }
   }
   if (kind === 'mansion' || kind === 'castle') {
@@ -2216,7 +2224,7 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
   ctx.imageSmoothingEnabled = false;
   const baseSprite = getPreparedSprite(spriteAsset);
   const pixelFrames = baseSprite?.frames;
-  const action = attacking ? attackAction : walking ? 'walk' : 'idle';
+  const action = resolveSpriteAction(pixelFrames, attacking, walking, attackAction);
   const sprite = pixelFrames?.[action]?.[frame] || baseSprite;
   if (sprite) {
     const ratio = sprite.width / sprite.height;
@@ -2635,7 +2643,7 @@ joystick?.addEventListener('pointercancel', releaseJoystick);
 joystick?.addEventListener('lostpointercapture', releaseJoystick);
 const deviceControlQuery = window.matchMedia('(pointer: coarse), (max-width: 760px)');
 function updateDeviceControls() {
-  const touchMode = deviceControlQuery.matches;
+  const touchMode = deviceControlQuery.matches || window.matchMedia('(pointer: coarse)').matches;
   document.body.dataset.controlMode = touchMode ? 'touch' : 'keyboard';
   $('#game').setAttribute('aria-label', touchMode
     ? 'Arena top-down. Use o joystick virtual para mover, toque em Atacar para golpear e nos poderes para usar habilidades.'
@@ -2643,6 +2651,7 @@ function updateDeviceControls() {
 }
 updateDeviceControls();
 deviceControlQuery.addEventListener('change', updateDeviceControls);
+window.addEventListener('resize', updateDeviceControls, { passive: true });
 window.addEventListener('blur', () => {
   state.keys.clear();
   releaseJoystick();

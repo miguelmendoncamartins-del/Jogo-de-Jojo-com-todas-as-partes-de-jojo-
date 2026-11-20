@@ -68,7 +68,7 @@ h1 { margin: 5px 0 0; font: 700 27px/.95 'Barlow Condensed', sans-serif; }
 .joystick-knob { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; border: 2px solid #e8f59b; border-radius: 50%; background: #d3e85a; box-shadow: 0 3px 10px #0009, inset 0 0 0 3px #ffffff42; transform: translate(-50%, -50%); transition: background .12s, box-shadow .12s; pointer-events: none; }
 .touch-joystick.active .joystick-knob { background: #e7f68c; box-shadow: 0 0 17px #d3e85a99, inset 0 0 0 3px #ffffff55; }
 .interact-button { display: none; }
-.attack-button { position: absolute; right: 12px; bottom: 9px; z-index: 2; min-height: 38px; padding: 0 14px; border: 1px solid var(--lime); color: var(--ink); background: var(--lime); font-size: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 3px 12px #0008; }
+.attack-button { display: none; position: absolute; right: 12px; bottom: 9px; z-index: 2; min-height: 38px; padding: 0 14px; border: 1px solid var(--lime); color: var(--ink); background: var(--lime); font-size: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 3px 12px #0008; }
 .attack-button:hover { background: #e7f68c; }
 .attack-button:active { transform: translateY(1px); }
 .attack-button span { margin-left: 5px; padding: 2px 5px; border: 1px solid #171a1940; font-size: 8px; }
@@ -193,6 +193,7 @@ h1 { margin: 5px 0 0; font: 700 27px/.95 'Barlow Condensed', sans-serif; }
 }
 @media (pointer: coarse), (max-width: 760px) {
   .canvas-hint { display: none; }
+  .attack-button { display: block; }
   .interact-button:not([hidden]) {
     position: absolute;
     top: 8px;

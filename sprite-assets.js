@@ -284,6 +284,14 @@ export function spriteAnimationFrame(mode, elapsed, phase = 0) {
   return ((Math.floor(Math.max(0, elapsed) * frameRate + phase) % 4) + 4) % 4;
 }
 
+export function resolveSpriteAction(frames, attacking, moving, attackAction = 'special') {
+  if (attacking) {
+    return frames?.[attackAction] ? attackAction : frames?.special ? 'special' : 'idle';
+  }
+  if (moving) return frames?.walk ? 'walk' : 'idle';
+  return frames?.idle ? 'idle' : 'walk';
+}
+
 async function loadPixelAnimationFrames(asset, sprite) {
   const actions = ['idle', 'walk', 'special', 'skill-0', 'skill-1', 'skill-2', 'skill-3'];
   const frames = {};

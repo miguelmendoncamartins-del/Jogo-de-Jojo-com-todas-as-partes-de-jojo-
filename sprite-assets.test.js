@@ -1,5 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createServer } from 'vite';
 
 let vite;
@@ -60,7 +62,7 @@ test('não substitui nomes sem correspondência por retratos de outro personagem
 });
 
 test('caminhada repete quatro quadros sem reutilizar o ciclo de ataque', () => {
-  const { spriteAnimationFrame } = spriteRegistry;
+  const { resolveSpriteAction, spriteAnimationFrame } = spriteRegistry;
   const walkFrames = Array.from({ length: 4 }, (_, index) => spriteAnimationFrame('walk', index / 9));
 
   assert.deepEqual(walkFrames, [0, 1, 2, 3]);
@@ -68,4 +70,25 @@ test('caminhada repete quatro quadros sem reutilizar o ciclo de ataque', () => {
   assert.equal(spriteAnimationFrame('attack', 1 / 15), 1);
   assert.equal(spriteAnimationFrame('idle', 1 / 3), 1);
   assert.throws(() => spriteAnimationFrame('run', 0), RangeError);
+
+  const frames = { idle: [1, 2, 3, 4], walk: [5, 6, 7, 8], special: [9, 10, 11, 12], 'skill-1': [13, 14, 15, 16] };
+  assert.equal(resolveSpriteAction(frames, false, true, 'skill-1'), 'walk');
+  assert.equal(resolveSpriteAction(frames, false, false, 'skill-1'), 'idle');
+  assert.equal(resolveSpriteAction(frames, true, true, 'skill-1'), 'skill-1');
+  assert.equal(resolveSpriteAction({ idle: [1] }, true, true, 'skill-1'), 'idle');
+});
+
+test('sprites pixel-art dos nove protagonistas incluem tiras de idle, caminhada e ataques', async () => {
+  const protagonists = ['Jonathan', 'Joseph', 'JotaroAnime3', 'Josuke', 'Giorno', 'Jolyne', 'Johnny_anime_png', 'Gappy', 'Jodio'];
+  const actions = ['idle', 'walk', 'special', 'skill-0', 'skill-1', 'skill-2', 'skill-3'];
+
+  for (const protagonist of protagonists) {
+    for (const action of actions) {
+      const path = join(process.cwd(), 'public', 'pixel-sprites', 'animations', 'Protagonista', protagonist, `${action}.png`);
+      const image = await readFile(path);
+      assert.equal(image.toString('hex', 0, 8), '89504e470d0a1a0a', `${protagonist}/${action} não é PNG`);
+      const width = image.readUInt32BE(16);
+      assert.equal(width % 4, 0, `${protagonist}/${action} deve ter quatro quadros iguais`);
+    }
+  }
 });
