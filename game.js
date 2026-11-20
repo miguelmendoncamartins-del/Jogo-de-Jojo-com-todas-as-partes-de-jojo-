@@ -2256,14 +2256,59 @@ function animationPhase(identity) {
   return [...String(identity)].reduce((value, letter) => (value + letter.charCodeAt(0)) % 4, 0);
 }
 
+function drawPixelFighter(x, y, scale, facingX, hitFlash, frame, attacking, color) {
+  const width = Math.min(120 * scale * (frame.width / frame.height), 112 * scale);
+  const height = Math.min(120 * scale, width / (frame.width / frame.height));
+  const drawX = Math.round(x - width / 2);
+  const drawY = Math.round(y - height + 8);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#10151288';
+  ctx.beginPath();
+  ctx.ellipse(Math.round(x), Math.round(y + 9 * 1.8 * scale), 13 * 1.8 * scale, 4 * 1.8 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (facingX < 0) {
+    ctx.translate(Math.round(x * 2), 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.globalAlpha = 0.9;
+  ctx.drawImage(frame, drawX, drawY, width, height);
+  if (attacking) {
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = color;
+    ctx.fillRect(x + width * 0.22, y - height * 0.68, 11 * scale, 3 * scale);
+    ctx.fillStyle = '#f2dd6a';
+    ctx.fillRect(x + width * 0.28, y - height * 0.61, 7 * scale, 2 * scale);
+  }
+  if (hitFlash > 0) {
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff88';
+    ctx.fillRect(drawX, drawY, width, height);
+  }
+  ctx.restore();
+}
+
 function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0, animation = 0, spriteAsset = null, moving = false, animationIdentity = '', attackAction = 'special') {
   const spriteScale = 1.8 * scale;
   const attacking = animation > 0;
   const walking = moving && !attacking;
-  const attackMotion = Math.sin(state.elapsed * 34);
   const phase = animationPhase(animationIdentity || (isPlayer ? selectedCharacter().id : 'enemy'));
   const mode = attacking ? 'attack' : moving ? 'walk' : 'idle';
   const frame = spriteAnimationFrame(mode, state.elapsed, phase);
+  const baseSprite = getPreparedSprite(spriteAsset);
+  const pixelFrames = baseSprite?.frames;
+  const action = resolveSpriteAction(pixelFrames, attacking, walking, attackAction);
+  const animationFrame = pixelFrames?.[action]?.[frame];
+  if (animationFrame) {
+    const bob = attacking ? Math.sin(state.elapsed * 26) * 2 : walking ? [0, -1.5, 0, -1.5][frame] : [0, -0.5, -1, -0.5][frame];
+    drawPixelFighter(x, Math.round(y + bob), scale, facingX, hitFlash, animationFrame, attacking, color);
+    return;
+  }
+
+  const attackMotion = Math.sin(state.elapsed * 34);
   const step = [-1, 0, 1, 0][frame];
   const idleBob = [0, -0.5, -1, -0.5][frame];
   const walkBob = [0, -1.5, 0, -1.5][frame];
@@ -2273,9 +2318,6 @@ function drawFighter(x, y, color, isPlayer, scale = 1, facingX = 1, hitFlash = 0
   ctx.scale(facingX < 0 ? -1 : 1, 1);
   if (walking) ctx.rotate(step * 0.018);
   ctx.imageSmoothingEnabled = false;
-  const baseSprite = getPreparedSprite(spriteAsset);
-  const pixelFrames = baseSprite?.frames;
-  const action = resolveSpriteAction(pixelFrames, attacking, walking, attackAction);
   const sprite = pixelFrames?.[action]?.[frame] || baseSprite;
   if (sprite) {
     const ratio = sprite.width / sprite.height;
