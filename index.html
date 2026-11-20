@@ -30,6 +30,7 @@
               <button id="reset-button" class="reset-button" type="button" title="Apagar todo o progresso salvo">RESETAR</button>
               <button class="mode-button active" data-mode="campaign">HISTÓRIA</button>
               <button class="mode-button" data-mode="final">BATALHA SECRETA</button>
+              <button id="modes-button" class="mode-button" type="button">MODOS DE JOGO</button>
             </div>
           </div>
 
@@ -80,6 +81,16 @@
       </section>
 
       <footer class="site-footer"><span>ETERNAL DESTINY</span><span>UMA JORNADA ATRAVÉS DAS NOVE PARTES</span></footer>
+      <aside class="modes-modal" id="modes-modal" role="dialog" aria-modal="true" aria-labelledby="modes-title" hidden>
+        <div class="modes-panel">
+          <header class="modes-header">
+            <div><span class="eyebrow">ROHAN KISHIBE · ORGANIZAÇÃO</span><h2 id="modes-title">MODOS DE JOGO</h2></div>
+            <button id="modes-close" class="modes-close" type="button" aria-label="Fechar modos">×</button>
+          </header>
+          <div class="modes-grid" id="modes-grid"></div>
+          <section class="rohan-chronicles" id="rohan-chronicles" aria-label="Crônicas locais do Rohan"></section>
+        </div>
+      </aside>
       <div class="unlock-banner" id="unlock-banner" aria-live="assertive"><span class="unlock-eyebrow">NOVO PODER DESBLOQUEADO!</span><strong id="unlock-name"></strong></div>
     </main>
     <script src="./vendor/phaser.min.js"></script>

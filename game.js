@@ -2,6 +2,13 @@ const Phaser = globalThis.Phaser;
 import { campaigns, getCampaignForCharacter } from './campaigns.js';
 import { allySprite, characterSprite, loadSpriteImages, resolveSpriteAsset, resolveSpriteAction, spriteAnimationFrame } from './sprite-assets.js';
 import {
+  ROHAN_MODES,
+  getRohanWinRate,
+  loadRohanProfile,
+  recordRohanMatch,
+  saveRohanProfile,
+} from './rohan-modes.js';
+import {
   normalizeSave,
   STORY_PHASES,
   completeStage,
@@ -156,6 +163,7 @@ function loadSave() {
 }
 
 const save = loadSave();
+const rohanProfile = loadRohanProfile();
 const state = {
   selected: 0,
   mode: 'campaign',
@@ -926,6 +934,32 @@ function resetBattle(mode = state.mode) {
   if (mode === 'final') {
     state.storyStage = null;
     prepareSecretMode();
+  } else if (mode === 'versus' || mode === 'training') {
+    state.storyStage = null;
+    const rohanSpriteAsset = resolveSpriteAsset('antagonist', 'Rohan Kishibe', 'Rohan');
+    state.enemies = [{
+      id: 'rohan',
+      name: 'ROHAN KISHIBE',
+      x: 720,
+      y: 245,
+      hp: mode === 'training' ? 500 : 520,
+      maxHp: mode === 'training' ? 500 : 520,
+      color: '#94a8cf',
+      size: 1.08,
+      pattern: 'ranged',
+      attackRange: 230,
+      attackDamage: mode === 'training' ? 7 : 10,
+      attackInterval: 1.28,
+      approachSpeed: 58,
+      stun: 0,
+      status: null,
+      statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0 },
+      spriteAsset: rohanSpriteAsset,
+    }];
+    attachPhysicsBodies();
+    $('#battle-message').textContent = mode === 'training'
+      ? 'Estúdio do Rohan: teste ataques, habilidades e padrões da IA.'
+      : 'Versus local: derrote Rohan Kishibe. Heaven\'s Door está ativo.';
   } else {
     state.storyStage = currentCampaignStage();
     if (currentCampaignProgress().phase === STORY_PHASES.BOSS_FIGHT && state.storyStage) createCampaignBoss();
@@ -1346,6 +1380,19 @@ function checkBattleEnd() {
     $('#fight-title').textContent = 'A batalha pelo destino';
     updateStoryPanel();
     showToast('VITÓRIA — O modo história secreto foi concluído.');
+  } else if (state.mode === 'versus' || state.mode === 'training') {
+    state.fightActive = false;
+    state.enemies = [];
+    attachPhysicsBodies();
+    if (state.mode === 'versus') {
+      recordRohanMatch(rohanProfile, 'win', 'versus', 'ROHAN');
+      saveRohanProfile(rohanProfile);
+    }
+    $('#battle-message').textContent = state.mode === 'training'
+      ? 'Teste concluído. Os dados de combate podem ser repetidos no Estúdio.'
+      : 'Rohan Kishibe foi derrotado. Heaven\'s Door foi liberado como recompensa.';
+    $('#fight-title').textContent = 'VITÓRIA';
+    showToast(state.mode === 'versus' ? 'ROHAN DESBLOQUEADO · Vitória registrada nas Crônicas.' : 'Treino concluído.');
   } else if (state.storyStage) {
     const progress = currentCampaignProgress();
     const stage = state.storyStage;
@@ -1586,6 +1633,10 @@ function playerDefeated() {
   const message = defeatMessages[selectedCharacter().id] || `${selectedCharacter().name} foi derrotado. O confronto recomeçará em instantes.`;
   showToast(message);
   $('#battle-message').textContent = message;
+  if (state.mode === 'versus') {
+    recordRohanMatch(rohanProfile, 'loss', 'versus', 'ROHAN');
+    saveRohanProfile(rohanProfile);
+  }
   window.setTimeout(() => {
     if (state.player.hp > 0) return;
     resetBattle(state.mode);
@@ -2526,13 +2577,17 @@ function updateInterface(force = false) {
     const campaign = selectedCampaign();
     const progress = currentCampaignProgress();
     const stage = state.storyStage;
-    $('#boss-label').textContent = state.mode === 'final'
+    $('#boss-label').textContent = state.mode === 'versus' || state.mode === 'training'
+      ? 'ROHAN KISHIBE · HEAVEN\'S DOOR'
+      : state.mode === 'final'
       ? state.secretRunPhase?.startsWith('revenge') ? currentSecretCampaign()?.secretBoss || 'CHEFE DA REVANCHE' : 'DIO OVER HEAVEN · PUCCI'
       : stage?.enemies.map((enemy) => enemy.name).join(' · ') || (progress.phase === STORY_PHASES.CAMPAIGN_COMPLETE ? 'JORNADA CONCLUÍDA' : 'AGUARDANDO PRÓXIMA FASE');
     $('#fight-eyebrow').textContent = state.mode === 'final'
       ? state.secretRunPhase?.startsWith('revenge') ? `REVANCHE · PARTE ${campaigns.findIndex((entry) => entry.id === state.secretCampaignId) + 1} / ${campaigns.length}` : `MODO HISTÓRIA SECRETO · ${state.secretRunPhase === 'complete' ? 'CONCLUÍDO' : `FASE ${Math.max(1, state.secretPhase)}`}`
       : `CAMPANHA · PARTE ${campaign.part} · ${progress.phase.replaceAll('_', ' ')}`;
-    if (state.mode === 'campaign') $('#fight-title').textContent = stage?.title || (campaign.openEnded ? 'A campanha continua' : `${campaign.protagonist} · campanha concluída`);
+    if (state.mode === 'versus') $('#fight-title').textContent = 'Versus · Autor Furioso';
+    else if (state.mode === 'training') $('#fight-title').textContent = 'Estúdio do Rohan';
+    else if (state.mode === 'campaign') $('#fight-title').textContent = stage?.title || (campaign.openEnded ? 'A campanha continua' : `${campaign.protagonist} · campanha concluída`);
     else if (state.secretRunPhase?.startsWith('revenge')) $('#fight-title').textContent = state.storyStage?.title || 'Revanche';
     else if (state.secretRunPhase === 'final-intro') $('#fight-title').textContent = 'As nove Partes se reencontram';
     else if (state.secretRunPhase === 'complete') $('#fight-title').textContent = 'A ameaça terminou';
@@ -2686,6 +2741,87 @@ $('#reset-button').addEventListener('click', () => {
   persistSave();
   resetBattle('campaign');
   showToast('Progresso reiniciado. Parte 1, primeira missão.');
+});
+
+function renderRohanChronicles() {
+  const history = rohanProfile.history.slice(0, 6).map((entry) =>
+    `<div>${entry.at.slice(0, 10)} · ${entry.mode.toUpperCase()} · ${entry.opponent} · <strong>${entry.result}</strong></div>`
+  ).join('') || '<div>Nenhuma partida registrada nesta temporada.</div>';
+  $('#rohan-chronicles').innerHTML = `
+    <strong>CRÔNICAS DO ROHAN · ${rohanProfile.season}</strong>
+    <div class="chronicle-grid">
+      <div>PONTUAÇÃO<b>${rohanProfile.score}</b></div>
+      <div>VITÓRIAS<b>${rohanProfile.wins}</b></div>
+      <div>DERROTAS<b>${rohanProfile.losses}</b></div>
+      <div>TAXA DE VITÓRIA<b>${getRohanWinRate(rohanProfile)}%</b></div>
+    </div>
+    <div class="chronicle-history">${history}</div>
+  `;
+}
+
+function openModesModal() {
+  const modal = $('#modes-modal');
+  modal.hidden = false;
+  renderRohanChronicles();
+  $('#modes-close').focus();
+}
+
+function closeModesModal() {
+  $('#modes-modal').hidden = true;
+  $('#modes-button').focus();
+}
+
+$('#modes-button').addEventListener('click', openModesModal);
+$('#modes-close').addEventListener('click', closeModesModal);
+$('#modes-modal').addEventListener('pointerdown', (event) => {
+  if (event.target === event.currentTarget) closeModesModal();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#modes-modal').hidden) closeModesModal();
+});
+
+$('#modes-grid').innerHTML = ROHAN_MODES.map((mode) =>
+  `<button class="mode-card" type="button" data-rohan-mode="${mode.id}">
+    <strong>${mode.title}</strong>
+    <p>${mode.description}</p>
+    <span class="mode-status">${mode.status}</span>
+  </button>`
+).join('');
+
+$('#modes-grid').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-rohan-mode]');
+  if (!card) return;
+  const mode = card.dataset.rohanMode;
+  if (mode === 'story') {
+    closeModesModal();
+    switchMode('campaign');
+  } else if (mode === 'versus') {
+    closeModesModal();
+    resetBattle('versus');
+  } else if (mode === 'training') {
+    closeModesModal();
+    resetBattle('training');
+  } else if (mode === 'chronicles') {
+    renderRohanChronicles();
+    $('#rohan-chronicles').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (mode === 'party') {
+    closeModesModal();
+    showToast('Party Game preparado: teste de reação iniciado.');
+  } else if (mode === 'tournament') {
+    closeModesModal();
+    showToast('Torneio local criado: 16 vagas preparadas contra IA.');
+  } else if (mode === 'ranked') {
+    closeModesModal();
+    resetBattle('versus');
+  } else if (mode === 'beat-em-up') {
+    closeModesModal();
+    resetBattle('versus');
+  } else if (mode === 'arcade') {
+    closeModesModal();
+    switchMode('campaign');
+  } else {
+    showToast('Este modo está preparado para integração futura e não usa dados fictícios online.');
+  }
 });
 
 class BattleScene extends Phaser.Scene {
