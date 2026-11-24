@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#171a19">
+    <meta name="theme-color" content="#11131c">
     <meta property="og:image" content="capa.png">
     <title>JoJo's Bizarre Adventure: Eternal Destiny</title>
     <link rel="stylesheet" href="./style.css">
@@ -15,6 +15,10 @@
         <div class="part-label" id="part-label">PARTE 3 <span>/</span> EGITO, 1988</div>
         <button class="sound-button" id="sound-button" title="Ativar trilha e efeitos sonoros" aria-label="Ativar trilha e efeitos sonoros">♪</button>
       </header>
+      <button class="fullscreen-button" id="fullscreen-button" type="button" aria-label="Ativar tela cheia" title="Ativar tela cheia">
+        <span aria-hidden="true">⛶</span><span class="fullscreen-label">TELA CHEIA</span>
+      </button>
+      <span class="fullscreen-status" id="fullscreen-status" role="status" hidden></span>
 
       <section class="game-layout" id="arena">
         <aside class="roster-panel" aria-label="Selecionar protagonista">
@@ -61,6 +65,10 @@
               </div>
             </div>
             <button class="attack-button" id="attack-button" type="button" aria-label="Executar ataque básico">⚔ ATACAR <span>J</span></button>
+            <div class="mobile-dash-controls">
+              <button id="mobile-run-button" type="button">CORRER</button>
+              <button id="mobile-dash-button" type="button">DASH</button>
+            </div>
           </div>
 
           <div class="fighter-hud">
@@ -84,13 +92,59 @@
       <aside class="modes-modal" id="modes-modal" role="dialog" aria-modal="true" aria-labelledby="modes-title" hidden>
         <div class="modes-panel">
           <header class="modes-header">
-            <div><span class="eyebrow">ROHAN KISHIBE · ORGANIZAÇÃO</span><h2 id="modes-title">MODOS DE JOGO</h2></div>
-            <button id="modes-close" class="modes-close" type="button" aria-label="Fechar modos">×</button>
+            <div><span class="eyebrow">JOJO'S BIZARRE ADVENTURE · ETERNAL DESTINY</span><h2 id="modes-title">SELECIONE SEU DESTINO</h2></div>
+            <button id="modes-close" class="modes-close" type="button" aria-label="Voltar">×</button>
           </header>
+          <div class="menu-intro"><span>UMA JORNADA. NOVE PARTES. DESTINOS INFINITOS.</span><p>Escolha um modo para entrar na batalha.</p></div>
           <div class="modes-grid" id="modes-grid"></div>
           <section class="rohan-chronicles" id="rohan-chronicles" aria-label="Crônicas locais do Rohan"></section>
         </div>
       </aside>
+      <section class="selection-screen history-select-screen" id="history-select" aria-label="Seleção de campanha" hidden>
+        <header class="selection-topline"><span>ETERNAL DESTINY <b>·</b> MODO HISTÓRIA</span><button class="selection-back" id="history-back" type="button">VOLTAR</button></header>
+        <div class="history-select-layout">
+          <aside class="history-character-panel">
+            <span class="selection-kicker">ESCOLHA SUA JORNADA</span>
+            <h2 id="history-protagonist">JONATHAN JOESTAR</h2>
+            <p id="history-part">PARTE 1 · PHANTOM BLOOD</p>
+            <div class="history-character-list" id="history-character-list"></div>
+          </aside>
+          <section class="history-route-panel">
+            <div class="route-heading"><div><span class="selection-kicker">LINHA DO DESTINO</span><h2>CAPÍTULOS</h2></div><span class="route-progress" id="history-progress"></span></div>
+            <div class="history-stage-map" id="history-stage-map"></div>
+            <div class="history-route-footer"><p id="history-description"></p><button class="selection-confirm" id="history-start" type="button">CONTINUAR CAPÍTULO</button></div>
+          </section>
+        </div>
+        <footer class="selection-controls">SELECIONE UMA PARTE <span>◆</span> NAVEGUE PELOS CAPÍTULOS <span>◆</span> CONFIRME PARA CONTINUAR</footer>
+      </section>
+      <section class="selection-screen versus-select-screen" id="versus-select" aria-label="Seleção de personagens do modo versus" hidden>
+        <header class="selection-topline"><span>ETERNAL DESTINY <b>·</b> MODO VERSUS</span><button class="selection-back" id="versus-back" type="button">VOLTAR</button></header>
+        <div class="versus-select-content">
+          <div class="selection-kicker">ESCOLHA SEUS LUTADORES</div>
+          <h2>CHARACTER SELECT</h2>
+          <div class="versus-players">
+            <article class="versus-player-card active" id="versus-player-one"><span>PLAYER 1</span><strong id="versus-name-one">JONATHAN JOESTAR</strong><small>W A S D · J ATAQUE · Q DASH · SHIFT CORRER</small></article>
+            <div class="versus-mark" aria-hidden="true">VS</div>
+            <article class="versus-player-card" id="versus-player-two"><span>PLAYER 2</span><strong id="versus-name-two">JOSEPH JOESTAR</strong><small>↑ ↓ ← → · ENTER ATAQUE · NUM 0 DASH · RSHIFT CORRER</small></article>
+          </div>
+          <div class="versus-roster" id="versus-roster"></div>
+          <div class="versus-select-footer"><span id="versus-hint">Escolha P1 e P2. Os dois jogadores usam o mesmo teclado.</span><button class="selection-confirm" id="versus-start" type="button">INICIAR BATALHA</button></div>
+        </div>
+        <footer class="selection-controls">PLAYER 1: WASD / J / Q <span>◆</span> PLAYER 2: SETAS / ENTER / NUM 0</footer>
+      </section>
+      <section class="title-screen" id="title-screen" aria-label="Tela de abertura">
+        <div class="title-backdrop" aria-hidden="true"></div>
+        <div class="title-grain" aria-hidden="true"></div>
+        <div class="title-content">
+          <span class="title-kicker">UMA SAGA ATRAVÉS DAS GERAÇÕES</span>
+          <h1>JOJO'S BIZARRE<br><span>ADVENTURE</span></h1>
+          <div class="title-emblem"><i></i><strong>ETERNAL DESTINY</strong><i></i></div>
+          <p>O destino de cada universo está em suas mãos.</p>
+          <button class="title-start" id="title-start" type="button"><span>▶</span> INICIAR JORNADA</button>
+          <span class="title-prompt">PRESSIONE QUALQUER TECLA PARA CONTINUAR</span>
+        </div>
+        <div class="title-meta"><span>PHANTOM BLOOD — THE JOJOLANDS</span><span>UM JOGO DE FÃ · NÃO OFICIAL</span></div>
+      </section>
       <div class="unlock-banner" id="unlock-banner" aria-live="assertive"><span class="unlock-eyebrow">NOVO PODER DESBLOQUEADO!</span><strong id="unlock-name"></strong></div>
     </main>
     <script src="./vendor/phaser.min.js"></script>

@@ -167,12 +167,14 @@ const rohanProfile = loadRohanProfile();
 const state = {
   selected: 0,
   mode: 'campaign',
+  localPvp: false,
+  versusOpponentIndex: 1,
   fightActive: true,
   secretPhase: 0,
   secretRunPhase: null,
   secretCampaignId: null,
   jotaroAwakened: false,
-  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
+  player: { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, dashTime: 0, dashCooldown: 0, dashX: 1, dashY: 0, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null },
   enemies: [],
   cooldowns: {},
   effects: [],
@@ -708,7 +710,7 @@ const villainPowers = Object.freeze({
   bruford: 'sword', tarkus: 'strength',
   santana: 'absorption', esidisi: 'heat', wamuu: 'wind', kars: 'ultimate-lifeform',
   ndoul: 'water', danieljdarby: 'soul-gamble', telencetdarby: 'soul-gamble', vanillaice: 'void',
-  yoshikagekira: 'bomb', kira: 'bomb', diavolo: 'erase-time', enricopucci: 'acceleration', pucci: 'acceleration',
+  yoshikagekira: 'bomb', kosakukawajiri: 'bomb', kira: 'bomb', diavolo: 'erase-time', enricopucci: 'acceleration', pucci: 'acceleration',
   funnyvalentine: 'dimension', tooru: 'calamity', wonderofu: 'calamity',
   angelo: 'water', formaggio: 'shrink', illuso: 'mirror', prosciutto: 'aging', ghiaccio: 'ice',
   risotto: 'metal', cioccolata: 'mold', blackmore: 'rain', rikiel: 'rods', sportsmaxx: 'zombie',
@@ -785,8 +787,9 @@ function createCampaignBoss(stage = state.storyStage) {
   dioHurtSfxCount = 0;
   state.enemies = templates.map((template) => ({
     ...template,
-    power: stage?.id === campaign.stages.at(-1)?.id
-      && normalizeVillainName(template.name) === normalizeVillainName(campaign.secretBoss)
+    power: (stage?.id === campaign.stages.at(-1)?.id
+      && normalizeVillainName(template.name) === normalizeVillainName(campaign.secretBoss))
+      || normalizeVillainName(template.name) === 'kosakukawajiri'
       ? villainPowerFor(template.name, campaign)
       : null,
     spriteAsset: enemySpriteAsset(template, campaign),
@@ -910,15 +913,46 @@ function attachPhysicsBodies() {
   attachBody(state.player, 22, 30);
   state.enemies.forEach((enemy) => attachBody(enemy, 36, 42));
 }
-function resetBattle(mode = state.mode) {
+
+function syncActorFromPhysics(actor) {
+  const center = actor.body?.center;
+  if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.y)) {
+    actor.physicsZone?.setPosition(actor.lastValidX ?? actor.x, actor.lastValidY ?? actor.y);
+    actor.body?.reset(actor.lastValidX ?? actor.x, actor.lastValidY ?? actor.y);
+    actor.body?.setVelocity(0, 0);
+    return;
+  }
+  const x = Phaser.Math.Clamp(center.x, 34, ARENA_WIDTH - 34);
+  const y = Phaser.Math.Clamp(center.y, 94, ARENA_HEIGHT - 30);
+  if (x !== center.x || y !== center.y) {
+    actor.physicsZone?.setPosition(x, y);
+    actor.body?.reset(x, y);
+    actor.body?.setVelocity(0, 0);
+  }
+  actor.x = x;
+  actor.y = y;
+  actor.lastValidX = x;
+  actor.lastValidY = y;
+}
+
+function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } = {}) {
   dioHurtSfxCount = 0;
   state.mode = mode;
+  state.localPvp = mode === 'versus' && localPvp;
+  state.versusOpponentIndex = opponentIndex;
   state.secretPhase = 0;
   state.secretRunPhase = null;
   state.secretCampaignId = null;
   state.jotaroAwakened = false;
-  state.player = { x: 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
+  state.player = { x: state.localPvp ? 300 : 380, y: 320, facingX: 1, facingY: 0, hp: 100, maxHp: 100, energy: 100, maxEnergy: 100, attackTimer: 0, attackAction: 'special', hitFlash: 0, isMoving: false, dashTime: 0, dashCooldown: 0, dashX: 1, dashY: 0, statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0, burnTick: 0 }, physicsZone: null, body: null };
   state.touchAxis = { x: 0, y: 0 };
+  document.body.classList.toggle('local-pvp', state.localPvp);
+  $('#canvas-hint').innerHTML = state.localPvp
+    ? 'P1 WASD MOVER <span>·</span> SHIFT CORRER <span>·</span> Q DASH <span>·</span> J ATACAR <span>····</span> P2 SETAS <span>·</span> SHIFT DIREITO CORRER <span>·</span> NUM 0 DASH <span>·</span> ENTER ATACAR'
+    : 'W A S D MOVER <span>·</span> J GOLPEAR <span>·</span> 1–4 PODERES <span>·</span> F INTERAGIR <span>·</span> E ASSISTIR';
+  $('#game').setAttribute('aria-label', state.localPvp
+    ? 'Versus local para duas pessoas. Player 1 usa W A S D, J, Q e Shift. Player 2 usa as setas, Enter, Numpad 0 e Shift direito.'
+    : 'Arena de combate. Use W A S D ou o joystick na tela para mover, Shift para correr, Q para esquivar com dash e J para atacar.');
   releaseJoystick();
   state.cooldowns = {};
   state.effects = [];
@@ -936,6 +970,40 @@ function resetBattle(mode = state.mode) {
     prepareSecretMode();
   } else if (mode === 'versus' || mode === 'training') {
     state.storyStage = null;
+    if (state.localPvp) {
+      const opponent = characters[state.versusOpponentIndex];
+      state.enemies = [{
+        id: 'player-two',
+        name: opponent.name.toUpperCase(),
+        x: 660,
+        y: 320,
+        hp: 100,
+        maxHp: 100,
+        color: opponent.color,
+        size: 1,
+        pattern: 'human',
+        attackTimer: 0,
+        attackWindup: 0,
+        attackTarget: null,
+        attackCooldown: 0,
+        attackAction: 'special',
+        hitFlash: 0,
+        isMoving: false,
+        facingX: -1,
+        facingY: 0,
+        dashTime: 0,
+        dashCooldown: 0,
+        dashX: -1,
+        dashY: 0,
+        invulnerable: 0,
+        playerTwo: true,
+        spriteAsset: opponent.spriteAsset,
+        physicsZone: null,
+        body: null,
+      }];
+      attachPhysicsBodies();
+      $('#battle-message').textContent = 'VERSUS LOCAL · P1: WASD/J/Q/SHIFT · P2: SETAS/ENTER/NUM 0/SHIFT DIREITO';
+    } else {
     const rohanSpriteAsset = resolveSpriteAsset('antagonist', 'Rohan Kishibe', 'Rohan');
     state.enemies = [{
       id: 'rohan',
@@ -960,6 +1028,7 @@ function resetBattle(mode = state.mode) {
     $('#battle-message').textContent = mode === 'training'
       ? 'Estúdio do Rohan: teste ataques, habilidades e padrões da IA.'
       : 'Versus local: derrote Rohan Kishibe. Heaven\'s Door está ativo.';
+    }
   } else {
     state.storyStage = currentCampaignStage();
     if (currentCampaignProgress().phase === STORY_PHASES.BOSS_FIGHT && state.storyStage) createCampaignBoss();
@@ -971,7 +1040,7 @@ function resetBattle(mode = state.mode) {
   }
   updateInterface(true);
   buildRoster();
-  loadSpritesInBackground([selectedCharacter().spriteAsset]);
+  loadSpritesInBackground([selectedCharacter().spriteAsset, ...state.enemies.map((enemy) => enemy.spriteAsset)]);
 }
 
 function selectCharacter(index) {
@@ -1153,6 +1222,10 @@ function startTheme() {
 
 function performBasicAttack() {
   if (!state.fightActive || performance.now() < state.cinematicUntil || state.attackCooldown > 0) return;
+  if (state.localPvp) {
+    performPvpAttack(state.player, state.enemies.find((enemy) => enemy.playerTwo));
+    return;
+  }
   state.attackCooldown = 0.42;
   state.player.attackTimer = 0.28;
   state.player.attackAction = 'special';
@@ -1170,10 +1243,25 @@ function performBasicAttack() {
       hit = true;
     }
   }
-  spawnBurst(player.x + player.facingX * 62, player.y + player.facingY * 62, hit ? '#f0e9b2' : '#d3e85a', 'impact');
+  spawnBurst(player.x + player.facingX * 62, player.y + player.facingY * 62, hit ? '#f0e9b2' : '#e9bd67', 'impact');
   playTone(hit ? 145 : 95);
   playNamedSfx('jojo-punch.mp3');
   if (hit) checkBattleEnd();
+}
+
+function performPvpAttack(attacker, target) {
+  const targetIsInvulnerable = target === state.player ? state.invulnerable > 0 : target?.invulnerable > 0;
+  if (!state.fightActive || !target || target.hp <= 0 || targetIsInvulnerable || attacker.attackCooldown > 0) return;
+  attacker.attackCooldown = 0.42;
+  attacker.attackTimer = 0.28;
+  attacker.attackAction = 'special';
+  const hit = isActorInFacingRange(attacker, target, 92, -0.22);
+  if (hit) damageEnemy(target, 23, 'basic');
+  spawnBurst(attacker.x + attacker.facingX * 58, attacker.y + attacker.facingY * 38, hit ? '#f0e9b2' : '#e9bd67', 'impact');
+  playTone(hit ? 145 : 95);
+  playNamedSfx('jojo-punch.mp3');
+  if (hit && target === state.player && target.hp <= 0) playerDefeated();
+  else if (hit) checkBattleEnd();
 }
 
 function useSkill(slot) {
@@ -1225,7 +1313,7 @@ function activateSkill(skill) {
     const restored = Math.min(30, player.maxHp - player.hp);
     player.hp += restored;
     state.effects.push({ type: 'heal', x: player.x, y: player.y, radius: skill.range * 0.58, time: 1.2, maxTime: 1.2 });
-    state.particles.push({ x: player.x, y: player.y - 25, text: restored ? `+${restored} VIDA` : 'VIDA COMPLETA', time: 1, color: '#d3e85a' });
+    state.particles.push({ x: player.x, y: player.y - 25, text: restored ? `+${restored} VIDA` : 'VIDA COMPLETA', time: 1, color: '#e9bd67' });
     showToast(restored ? `Crazy Diamond restaurou ${restored} pontos de vida.` : 'Sua vida já está completa.');
   } else if (skill.effect === 'decoy') {
     state.effects.push({ type: 'decoy', x: centerX, y: centerY, radius: 22, time: skill.duration, maxTime: skill.duration });
@@ -1300,11 +1388,14 @@ function activateSkill(skill) {
 }
 
 function isInFacingRange(enemy, range, forwardDot = 0.45) {
-  const dx = enemy.x - state.player.x;
-  const dy = enemy.y - state.player.y;
+  return isActorInFacingRange(state.player, enemy, range, forwardDot);
+}
+function isActorInFacingRange(attacker, target, range, forwardDot = 0.45) {
+  const dx = target.x - attacker.x;
+  const dy = target.y - attacker.y;
   const distanceToEnemy = Math.hypot(dx, dy);
-  const facingDot = distanceToEnemy ? (dx / distanceToEnemy) * state.player.facingX + (dy / distanceToEnemy) * state.player.facingY : 1;
-  return overlapsHitCircle(enemy, state.player.x, state.player.y, range) && facingDot > forwardDot;
+  const facingDot = distanceToEnemy ? (dx / distanceToEnemy) * attacker.facingX + (dy / distanceToEnemy) * attacker.facingY : 1;
+  return overlapsHitCircle(target, attacker.x, attacker.y, range) && facingDot > forwardDot;
 }
 function overlapsHitCircle(target, x, y, radius) {
   if (!target.body) return distance(target, { x, y }) <= radius;
@@ -1313,6 +1404,61 @@ function overlapsHitCircle(target, x, y, radius) {
   return Phaser.Geom.Intersects.CircleToRectangle(hitCircle, targetBounds);
 }
 function distance(first, second) { return Math.hypot(first.x - second.x, first.y - second.y); }
+
+function startDash(actor, isPlayerTwo = false) {
+  if (!state.fightActive || actor.dashCooldown > 0) return;
+  const directions = isPlayerTwo
+    ? {
+      x: Number(state.keys.has('arrowright')) - Number(state.keys.has('arrowleft')),
+      y: Number(state.keys.has('arrowdown')) - Number(state.keys.has('arrowup')),
+    }
+    : {
+      x: Number(state.keys.has('d') || (!state.localPvp && state.keys.has('arrowright'))) - Number(state.keys.has('a') || (!state.localPvp && state.keys.has('arrowleft'))) + state.touchAxis.x,
+      y: Number(state.keys.has('s') || (!state.localPvp && state.keys.has('arrowdown'))) - Number(state.keys.has('w') || (!state.localPvp && state.keys.has('arrowup'))) + state.touchAxis.y,
+    };
+  const length = Math.hypot(directions.x, directions.y);
+  actor.dashX = length > 0.1 ? directions.x / length : actor.facingX;
+  actor.dashY = length > 0.1 ? directions.y / length : actor.facingY;
+  actor.facingX = actor.dashX;
+  actor.facingY = actor.dashY;
+  actor.dashTime = 0.19;
+  actor.dashCooldown = 0.82;
+  if (isPlayerTwo) actor.invulnerable = 0.22;
+  else state.invulnerable = Math.max(state.invulnerable, 0.22);
+  state.effects.push({ type: 'dash-trail', x: actor.x, y: actor.y, radius: 25, time: 0.25, maxTime: 0.25 });
+}
+
+function moveControlledActor(actor, dt, controls, touchAxis = null, speedScale = 1) {
+  actor.dashTime = Math.max(0, actor.dashTime - dt);
+  actor.dashCooldown = Math.max(0, actor.dashCooldown - dt);
+  if (actor.attackCooldown !== undefined) actor.attackCooldown = Math.max(0, actor.attackCooldown - dt);
+  let moveX = controls.x + (touchAxis?.x || 0);
+  let moveY = controls.y + (touchAxis?.y || 0);
+  const magnitude = Math.hypot(moveX, moveY);
+  if (magnitude > 1) { moveX /= magnitude; moveY /= magnitude; }
+  if (actor.dashTime > 0) {
+    actor.isMoving = true;
+    actor.body?.setVelocity(actor.dashX * 560, actor.dashY * 560);
+    if (!actor.body) {
+      actor.x += actor.dashX * 560 * dt;
+      actor.y += actor.dashY * 560 * dt;
+    }
+    return;
+  }
+  actor.isMoving = magnitude > 0.12;
+  if (actor.isMoving) {
+    actor.facingX = moveX;
+    actor.facingY = moveY;
+  }
+  const speedX = 190 * speedScale;
+  const speedY = 155 * speedScale;
+  if (actor.body) {
+    actor.body.setVelocity(actor.isMoving ? moveX * speedX : 0, actor.isMoving ? moveY * speedY : 0);
+  } else if (actor.isMoving) {
+    actor.x += moveX * speedX * dt;
+    actor.y += moveY * speedY * dt;
+  }
+}
 
 function damageEnemy(enemy, amount, kind, guardBreak = false) {
   if (enemy.hp <= 0) return;
@@ -1335,6 +1481,14 @@ function damageEnemy(enemy, amount, kind, guardBreak = false) {
 
 function checkBattleEnd() {
   if (state.enemies.some((enemy) => enemy.hp > 0)) return;
+  if (state.localPvp) {
+    state.fightActive = false;
+    $('#battle-message').textContent = 'PLAYER 1 VENCEU A BATALHA!';
+    $('#fight-title').textContent = 'VITÓRIA · PLAYER 1';
+    showToast('PLAYER 1 venceu o duelo local.');
+    updateInterface(true);
+    return;
+  }
   if (state.mode === 'final' && state.secretRunPhase === 'revenge-battle') {
     const campaign = currentSecretCampaign();
     const enemyId = state.enemies[0]?.id;
@@ -1470,7 +1624,7 @@ function update(dt, timestamp) {
         effect.activated = true;
         target.stun = Math.max(target.stun, 1.6);
         damageEnemy(target, effect.damage, 'trap-snap');
-        spawnBurst(target.x, target.y, '#d3e85a', 'string-snare');
+        spawnBurst(target.x, target.y, '#e9bd67', 'string-snare');
         if (target.hp <= 0) checkBattleEnd();
       }
     }
@@ -1498,29 +1652,29 @@ function update(dt, timestamp) {
   const campaignFinished = campaignPhase === STORY_PHASES.CAMPAIGN_COMPLETE;
   if ((state.fightActive || exploring || campaignFinished) && timestamp >= state.cinematicUntil) {
     const player = state.player;
-    if (player.physicsZone) {
-      player.x = player.physicsZone.x;
-      player.y = player.physicsZone.y;
+    if (player.body) syncActorFromPhysics(player);
+    let playerMoveX = Number(state.keys.has('d') || (!state.localPvp && state.keys.has('arrowright'))) - Number(state.keys.has('a') || (!state.localPvp && state.keys.has('arrowleft')));
+    let playerMoveY = Number(state.keys.has('s') || (!state.localPvp && state.keys.has('arrowdown'))) - Number(state.keys.has('w') || (!state.localPvp && state.keys.has('arrowup')));
+    if (player.statuses.freeze > 0) playerMoveX = playerMoveY = 0;
+    if (player.statuses.confuse > 0) { playerMoveX *= -1; playerMoveY *= -1; }
+    const sprinting = state.keys.has('shift') || state.keys.has('shiftleft') || state.keys.has('run-touch');
+    moveControlledActor(player, dt, { x: playerMoveX, y: playerMoveY }, state.touchAxis, (sprinting ? 1.65 : 1) * (player.statuses.slow > 0 ? 0.55 : 1));
+    if (state.fightActive) {
+      for (const enemy of state.enemies) {
+        if (state.localPvp && enemy.playerTwo) {
+          if (enemy.body) syncActorFromPhysics(enemy);
+          enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+          enemy.invulnerable = Math.max(0, enemy.invulnerable - dt);
+          enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
+          const moveX = Number(state.keys.has('arrowright')) - Number(state.keys.has('arrowleft'));
+          const moveY = Number(state.keys.has('arrowdown')) - Number(state.keys.has('arrowup'));
+          const running = state.keys.has('shiftright');
+          moveControlledActor(enemy, dt, { x: moveX, y: moveY }, null, running ? 1.65 : 1);
+        } else {
+          updateEnemy(enemy, dt);
+        }
+      }
     }
-    let moveX = Number(state.keys.has('d') || state.keys.has('arrowright')) - Number(state.keys.has('a') || state.keys.has('arrowleft')) + state.touchAxis.x;
-    let moveY = Number(state.keys.has('s') || state.keys.has('arrowdown')) - Number(state.keys.has('w') || state.keys.has('arrowup')) + state.touchAxis.y;
-    if (player.statuses.freeze > 0) moveX = moveY = 0;
-    if (player.statuses.confuse > 0) { moveX *= -1; moveY *= -1; }
-    const magnitude = Math.hypot(moveX, moveY);
-    if (magnitude > 1) { moveX /= magnitude; moveY /= magnitude; }
-    player.isMoving = magnitude > 0.12;
-    if (player.body) {
-      player.body.setVelocity(player.isMoving ? moveX * 190 * (player.statuses.slow > 0 ? 0.55 : 1) : 0, player.isMoving ? moveY * 155 * (player.statuses.slow > 0 ? 0.55 : 1) : 0);
-    } else if (player.isMoving) {
-      const speedScale = player.statuses.slow > 0 ? 0.55 : 1;
-      player.x += moveX * 190 * speedScale * dt;
-      player.y += moveY * 155 * speedScale * dt;
-    }
-    if (player.isMoving) {
-      player.facingX = moveX;
-      player.facingY = moveY;
-    }
-    if (state.fightActive) for (const enemy of state.enemies) updateEnemy(enemy, dt);
   } else {
     state.player.isMoving = false;
     state.player.body?.setVelocity(0, 0);
@@ -1534,10 +1688,7 @@ function update(dt, timestamp) {
 
 function updateEnemy(enemy, dt) {
   if (enemy.hp <= 0) return;
-  if (enemy.physicsZone) {
-    enemy.x = enemy.physicsZone.x;
-    enemy.y = enemy.physicsZone.y;
-  }
+  if (enemy.body) syncActorFromPhysics(enemy);
   enemy.stun = Math.max(0, enemy.stun - dt);
   enemy.slow = Math.max(0, enemy.slow - dt);
   enemy.marked = Math.max(0, enemy.marked - dt);
@@ -1619,6 +1770,13 @@ function updateEnemy(enemy, dt) {
 function playerDefeated() {
   if (!state.fightActive) return;
   state.fightActive = false;
+  if (state.localPvp) {
+    $('#battle-message').textContent = 'PLAYER 2 VENCEU A BATALHA!';
+    $('#fight-title').textContent = 'VITÓRIA · PLAYER 2';
+    showToast('PLAYER 2 venceu o duelo local.');
+    updateInterface(true);
+    return;
+  }
   const defeatMessages = {
     jonathan: 'Jonathan cai, mas o Hamon ainda pode virar o rumo do confronto.',
     joseph: 'Joseph recua após uma surpresa do inimigo e já prepara uma nova estratégia.',
@@ -1971,7 +2129,7 @@ function drawSceneProps(kind, theme) {
       ctx.beginPath(); ctx.ellipse(x, y, 68, 34, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#d9c17a'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.ellipse(x, y, 29, 15, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#d3e85a';
+      ctx.fillStyle = '#e9bd67';
       ctx.fillRect(x - 25, y - 3, 5, 7); ctx.fillRect(x + 18, y + 3, 5, 7);
     }
   }
@@ -2009,7 +2167,7 @@ function drawSceneProps(kind, theme) {
       ctx.beginPath(); ctx.ellipse(x, y, 68, 34, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#d9c17a'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.ellipse(x, y, 29, 15, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#d3e85a';
+      ctx.fillStyle = '#e9bd67';
       ctx.fillRect(x - 25, y - 3, 5, 7); ctx.fillRect(x + 18, y + 3, 5, 7);
     }
   }
@@ -2167,14 +2325,14 @@ function drawStoryLandmarks(theme) {
   const progress = revengeMap ? null : currentCampaignProgress();
   if (!stage) {
     const complete = progress.phase === STORY_PHASES.CAMPAIGN_COMPLETE;
-    ctx.fillStyle = complete ? '#d3e85a' : '#707c62';
+    ctx.fillStyle = complete ? '#e9bd67' : '#707c62';
     ctx.fillRect(855, 278, 48, 6);
     ctx.fillRect(855, 284, 6, complete ? 36 : 62);
     ctx.fillRect(897, 284, 6, complete ? 36 : 62);
     ctx.fillStyle = '#20251f';
     ctx.fillRect(867, 286, 24, 43);
     if (complete) {
-      ctx.fillStyle = '#d3e85a';
+      ctx.fillStyle = '#e9bd67';
       ctx.fillRect(878, 302, 3, 4);
     }
     return;
@@ -2184,12 +2342,12 @@ function drawStoryLandmarks(theme) {
     const marker = stage.objective;
     const bob = Math.sin(state.elapsed * 4) * 4;
     ctx.globalAlpha = 0.2 + Math.sin(state.elapsed * 5) * 0.05;
-    ctx.fillStyle = theme?.accent || '#d3e85a';
+    ctx.fillStyle = theme?.accent || '#e9bd67';
     ctx.beginPath();
     ctx.arc(marker.x, marker.y, 24, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = theme?.accent || '#d3e85a';
+    ctx.fillStyle = theme?.accent || '#e9bd67';
     ctx.beginPath();
     ctx.moveTo(marker.x, marker.y - 12 + bob);
     ctx.lineTo(marker.x + 9, marker.y + bob);
@@ -2204,14 +2362,14 @@ function drawStoryLandmarks(theme) {
     ctx.fillStyle = '#f0eee0';
     ctx.fillText('PISTA · F', marker.x, marker.y - 24 + bob);
     if (distance(state.player, marker) <= 86) {
-      ctx.fillStyle = theme?.accent || '#d3e85a';
+      ctx.fillStyle = theme?.accent || '#e9bd67';
       ctx.fillText('PRESSIONE F', state.player.x, state.player.y - 48);
     }
   }
 
   if (progress && (progress.unlockedPathIds.includes(stage.pathId) || progress.phase === STORY_PHASES.ENVIRONMENT_CHANGED || progress.phase === STORY_PHASES.NEXT_STAGE_UNLOCKED || progress.phase === STORY_PHASES.STAGE_COMPLETE)) {
     const open = progress.phase !== STORY_PHASES.POST_BATTLE;
-    ctx.fillStyle = theme?.accent || '#d3e85a';
+    ctx.fillStyle = theme?.accent || '#e9bd67';
     ctx.globalAlpha = 0.6 + Math.sin(state.elapsed * 3) * 0.14;
     ctx.fillRect(858, 250, 48, 5);
     ctx.fillRect(858, 255, 5, 58);
@@ -2257,10 +2415,10 @@ function animationPhase(identity) {
 }
 
 function drawPixelFighter(x, y, scale, facingX, hitFlash, frame, attacking, color) {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !frame?.width || !frame?.height) return;
   const width = Math.min(120 * scale * (frame.width / frame.height), 112 * scale);
   const height = Math.min(120 * scale, width / (frame.width / frame.height));
-  const drawX = Math.round(x - width / 2);
-  const drawY = Math.round(y - height + 8);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -2269,24 +2427,22 @@ function drawPixelFighter(x, y, scale, facingX, hitFlash, frame, attacking, colo
   ctx.ellipse(Math.round(x), Math.round(y + 9 * 1.8 * scale), 13 * 1.8 * scale, 4 * 1.8 * scale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (facingX < 0) {
-    ctx.translate(Math.round(x * 2), 0);
-    ctx.scale(-1, 1);
-  }
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.scale(facingX < 0 ? -1 : 1, 1);
   ctx.globalAlpha = 0.9;
-  ctx.drawImage(frame, drawX, drawY, width, height);
+  ctx.drawImage(frame, -width / 2, -height + 8, width, height);
   if (attacking) {
     ctx.globalAlpha = 0.7;
     ctx.fillStyle = color;
-    ctx.fillRect(x + width * 0.22, y - height * 0.68, 11 * scale, 3 * scale);
+    ctx.fillRect(width * 0.22, -height * 0.68, 11 * scale, 3 * scale);
     ctx.fillStyle = '#f2dd6a';
-    ctx.fillRect(x + width * 0.28, y - height * 0.61, 7 * scale, 2 * scale);
+    ctx.fillRect(width * 0.28, -height * 0.61, 7 * scale, 2 * scale);
   }
   if (hitFlash > 0) {
     ctx.globalCompositeOperation = 'source-atop';
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#ffffff88';
-    ctx.fillRect(drawX, drawY, width, height);
+    ctx.fillRect(-width / 2, -height + 8, width, height);
   }
   ctx.restore();
 }
@@ -2473,7 +2629,7 @@ function drawEffects() {
       }
     } else if (effect.type === 'trap' || effect.type === 'string') {
       ctx.globalAlpha = 0.9;
-      ctx.strokeStyle = effect.activated ? '#ef8c72' : '#d3e85a';
+      ctx.strokeStyle = effect.activated ? '#ef8c72' : '#e9bd67';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 5]);
       ctx.beginPath();
@@ -2553,7 +2709,10 @@ function draw() {
   if (state.screenShake > 0) ctx.translate((Math.random() - 0.5) * state.screenShake, (Math.random() - 0.5) * state.screenShake);
   drawBackground();
   const drawables = state.enemies.filter((enemy) => enemy.hp > 0).map((enemy) => ({ y: enemy.y, draw: () => {
-    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, (enemy.attackTimer ?? 9) < 0.35 ? 1 : 0, enemy.spriteAsset, Boolean(enemy.body?.velocity?.x || enemy.body?.velocity?.y), enemy.id);
+    const enemyCharacter = enemy.playerTwo ? characters[state.versusOpponentIndex] : null;
+    if (enemyCharacter && enemyCharacter.part >= 3) drawStand(enemy.x, enemy.y, enemyCharacter, enemy.facingX);
+    const attacking = enemy.playerTwo ? enemy.attackTimer > 0 : (enemy.attackTimer ?? 9) < 0.35;
+    drawFighter(enemy.x, enemy.y, enemy.hitFlash > 0 ? '#ffffff' : enemy.color, false, enemy.size, enemy.playerTwo ? enemy.facingX : state.player.x < enemy.x ? -1 : 1, enemy.hitFlash, attacking ? 1 : 0, enemy.spriteAsset, enemy.isMoving || Boolean(enemy.body?.velocity?.x || enemy.body?.velocity?.y), enemy.playerTwo ? enemyCharacter.id : enemy.id, enemy.attackAction);
     if (enemy.empowered) {
       ctx.globalAlpha = 0.4 + Math.sin(state.elapsed * 7) * 0.13;
       ctx.strokeStyle = enemy.id === 'dio-heaven' ? '#f0d75a' : '#e18dca';
@@ -2573,7 +2732,7 @@ function draw() {
     ctx.fillStyle = '#f0eee0';
     ctx.font = '9px "DM Mono", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(enemy.name, enemy.x, enemy.y - 66);
+    ctx.fillText(enemy.playerTwo ? `P2 · ${enemyCharacter.short}` : enemy.name, enemy.x, enemy.y - 66);
   } }));
   drawables.push({ y: state.player.y, draw: () => {
     const character = selectedCharacter();
@@ -2619,7 +2778,9 @@ function updateInterface(force = false) {
     const campaign = selectedCampaign();
     const progress = currentCampaignProgress();
     const stage = state.storyStage;
-    $('#boss-label').textContent = state.mode === 'versus' || state.mode === 'training'
+    $('#boss-label').textContent = state.localPvp
+      ? `PLAYER 2 · ${characters[state.versusOpponentIndex].name.toUpperCase()}`
+      : state.mode === 'versus' || state.mode === 'training'
       ? 'ROHAN KISHIBE · HEAVEN\'S DOOR'
       : state.mode === 'final'
       ? state.secretRunPhase?.startsWith('revenge') ? currentSecretCampaign()?.secretBoss || 'CHEFE DA REVANCHE' : 'DIO OVER HEAVEN · PUCCI'
@@ -2627,7 +2788,9 @@ function updateInterface(force = false) {
     $('#fight-eyebrow').textContent = state.mode === 'final'
       ? state.secretRunPhase?.startsWith('revenge') ? `REVANCHE · PARTE ${campaigns.findIndex((entry) => entry.id === state.secretCampaignId) + 1} / ${campaigns.length}` : `MODO HISTÓRIA SECRETO · ${state.secretRunPhase === 'complete' ? 'CONCLUÍDO' : `FASE ${Math.max(1, state.secretPhase)}`}`
       : `CAMPANHA · PARTE ${campaign.part} · ${progress.phase.replaceAll('_', ' ')}`;
-    if (state.mode === 'versus') $('#fight-title').textContent = 'Versus · Autor Furioso';
+    if (state.mode === 'versus') $('#fight-title').textContent = state.localPvp
+      ? `${selectedCharacter().short} VS ${characters[state.versusOpponentIndex].short}`
+      : 'Versus · Autor Furioso';
     else if (state.mode === 'training') $('#fight-title').textContent = 'Estúdio do Rohan';
     else if (state.mode === 'campaign') $('#fight-title').textContent = stage?.title || (campaign.openEnded ? 'A campanha continua' : `${campaign.protagonist} · campanha concluída`);
     else if (state.secretRunPhase?.startsWith('revenge')) $('#fight-title').textContent = state.storyStage?.title || 'Revanche';
@@ -2643,7 +2806,7 @@ function updateInterface(force = false) {
   $('#energy-fill').style.width = `${state.player.energy / state.player.maxEnergy * 100}%`;
   $('#energy-label').textContent = `${Math.floor(state.player.energy)} / ${state.player.maxEnergy}`;
 
-  $('#boss-bars').innerHTML = state.enemies.map((enemy) => `<div class="boss-bar-row"><span>${enemy.id === 'dio-heaven' ? 'DIO' : enemy.id === 'pucci-heaven' ? 'PUCCI' : 'BOSS'}</span><div class="meter"><div class="boss-fill" style="width:${Math.max(0, enemy.hp / enemy.maxHp * 100)}%"></div></div><b>${Math.ceil(enemy.hp)} / ${enemy.maxHp}</b></div>`).join('') || '<span style="color:#939c94;font-size:8px">AGUARDANDO TRANSFORMAÇÃO</span>';
+  $('#boss-bars').innerHTML = state.enemies.map((enemy) => `<div class="boss-bar-row"><span>${enemy.playerTwo ? 'P2' : enemy.id === 'dio-heaven' ? 'DIO' : enemy.id === 'pucci-heaven' ? 'PUCCI' : 'BOSS'}</span><div class="meter"><div class="boss-fill" style="width:${Math.max(0, enemy.hp / enemy.maxHp * 100)}%"></div></div><b>${Math.ceil(enemy.hp)} / ${enemy.maxHp}</b></div>`).join('') || '<span style="color:#939c94;font-size:8px">AGUARDANDO TRANSFORMAÇÃO</span>';
   updatePowerRow();
   const assistButton = $('#assist-button');
   const assistEnabled = state.mode === 'final' && state.secretPhase === 2 && state.fightActive && !state.assist && state.assistCooldown <= 0;
@@ -2685,21 +2848,42 @@ function updatePowerRow() {
 }
 
 function handleKeyDown(event) {
+  if (!$('#title-screen').hidden) {
+    if (event.key === 'Tab' || event.key === 'Escape') return;
+    event.preventDefault();
+    startTitleFlow();
+    return;
+  }
+  if (!$('#modes-modal').hidden || !$('#history-select').hidden || !$('#versus-select').hidden) return;
   if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
   const key = event.key.toLowerCase();
-  if (['w', 'a', 's', 'd', 'f', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', ' ', 'j', '1', '2', '3', '4', 'enter'].includes(key)) event.preventDefault();
+  const isP2Dash = event.code === 'Numpad0' || event.code === 'ControlRight';
+  const isP2Attack = state.localPvp && (key === 'enter' || event.code === 'NumpadEnter');
+  if (['w', 'a', 's', 'd', 'f', 'q', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', ' ', 'j', '1', '2', '3', '4', 'enter', '0'].includes(key) || isP2Dash) event.preventDefault();
+  const keyId = event.code === 'ShiftRight' ? 'shiftright' : key;
   const storyAction = $('#story-action');
   if (!event.repeat && (key === 'enter' || key === ' ') && !state.fightActive && !storyAction.hidden && !storyAction.disabled) {
+    if (state.localPvp) return;
     continueStory();
     return;
   }
-  state.keys.add(key);
+  state.keys.add(keyId);
+  if (state.localPvp) {
+    if (!event.repeat && (key === 'j' || key === ' ')) performBasicAttack();
+    if (!event.repeat && isP2Attack) performPvpAttack(state.enemies.find((enemy) => enemy.playerTwo), state.player);
+    if (!event.repeat && key === 'q') startDash(state.player);
+    if (!event.repeat && isP2Dash) startDash(state.enemies.find((enemy) => enemy.playerTwo), true);
+    return;
+  }
   if (!event.repeat && (key === 'j' || key === ' ')) performBasicAttack();
   if (!event.repeat && /^[1-4]$/.test(key)) useSkill(Number(key) - 1);
   if (!event.repeat && key === 'f') interactWithStoryObjective();
   if (!event.repeat && key === 'e') requestAssist();
 }
-function handleKeyUp(event) { state.keys.delete(event.key.toLowerCase()); }
+function handleKeyUp(event) {
+  state.keys.delete(event.key.toLowerCase());
+  if (event.code === 'ShiftRight') state.keys.delete('shiftright');
+}
 const joystick = $('#touch-joystick');
 const joystickKnob = $('#joystick-knob');
 let joystickPointer = null;
@@ -2738,13 +2922,23 @@ joystick?.addEventListener('pointermove', moveJoystick);
 joystick?.addEventListener('pointerup', releaseJoystick);
 joystick?.addEventListener('pointercancel', releaseJoystick);
 joystick?.addEventListener('lostpointercapture', releaseJoystick);
+$('#mobile-run-button').addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  state.keys.add('run-touch');
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach((eventName) => {
+  $('#mobile-run-button').addEventListener(eventName, () => state.keys.delete('run-touch'));
+});
+$('#mobile-dash-button').addEventListener('click', () => startDash(state.player));
 const deviceControlQuery = window.matchMedia('(pointer: coarse), (max-width: 760px)');
 function updateDeviceControls() {
   const touchMode = deviceControlQuery.matches || window.matchMedia('(pointer: coarse)').matches;
   document.body.dataset.controlMode = touchMode ? 'touch' : 'keyboard';
-  $('#game').setAttribute('aria-label', touchMode
-    ? 'Arena top-down. Use o joystick virtual para mover, toque em Atacar para golpear e nos poderes para usar habilidades.'
-    : 'Arena de combate top-down. Use W A S D ou as setas para mover, J para atacar e 1 a 4 para usar poderes.');
+  $('#game').setAttribute('aria-label', state.localPvp
+    ? 'Versus local para duas pessoas. Player 1 usa W A S D, J, Q e Shift. Player 2 usa as setas, Enter, Numpad 0 e Shift direito.'
+    : touchMode
+    ? 'Arena top-down. Use o joystick virtual para mover, Correr para acelerar, Dash para esquivar, Atacar para golpear e toque nos poderes para usar habilidades.'
+    : 'Arena de combate top-down. Use W A S D ou as setas para mover, Shift para correr, Q para usar dash, J para atacar e 1 a 4 para poderes.');
 }
 updateDeviceControls();
 deviceControlQuery.addEventListener('change', updateDeviceControls);
@@ -2808,19 +3002,199 @@ function openModesModal() {
   $('#modes-close').focus();
 }
 
+let gameStarted = false;
+
+function startTitleFlow() {
+  $('#title-screen').hidden = true;
+  openModesModal();
+  requestGameFullscreen();
+}
+
+function beginGameFromMenu() {
+  gameStarted = true;
+  closeModesModal();
+}
+
 function closeModesModal() {
   $('#modes-modal').hidden = true;
-  $('#modes-button').focus();
+  if (gameStarted) {
+    $('#modes-button').focus();
+  } else {
+    $('#title-screen').hidden = false;
+    $('#title-start').focus();
+  }
 }
+
+let historySelectedCharacter = state.selected;
+const versusSelection = { activePlayer: 0, players: [0, 1] };
+
+function renderHistorySelection() {
+  const character = characters[historySelectedCharacter];
+  const campaign = getCampaignForCharacter(character.id);
+  const progress = currentCampaignProgress(character.id);
+  const currentStage = campaign.stages[progress.stageIndex] || null;
+  const unlocked = hasCampaignAccess(character.id);
+  $('#history-protagonist').textContent = character.name.toUpperCase();
+  $('#history-part').textContent = `PARTE ${character.part} · ${campaign.title.toUpperCase()}`;
+  $('#history-progress').textContent = currentStage
+    ? `CAPÍTULO ${progress.stageIndex + 1} / ${campaign.stages.length}`
+    : 'CAMPANHA CONCLUÍDA';
+  $('#history-description').textContent = currentStage
+    ? `${currentStage.location} · ${currentStage.scene}`
+    : 'Todos os capítulos disponíveis desta campanha foram concluídos.';
+  $('#history-start').disabled = !unlocked || !currentStage;
+  $('#history-start').textContent = currentStage ? 'CONTINUAR CAPÍTULO' : 'JORNADA CONCLUÍDA';
+  $('#history-character-list').innerHTML = characters.map((entry, index) => {
+    const available = hasCampaignAccess(entry.id);
+    const portrait = entry.portraitDataUrl || entry.spriteAsset.url;
+    return `<button type="button" class="history-character${index === historySelectedCharacter ? ' selected' : ''}${available ? '' : ' locked'}" data-history-character="${index}" ${available ? '' : 'disabled'}>
+      <img src="${portrait}" alt=""><span>${entry.short}</span><small>PARTE ${String(entry.part).padStart(2, '0')}</small>
+    </button>`;
+  }).join('');
+  $('#history-stage-map').innerHTML = campaign.stages.map((entry, index) => {
+    const done = index < progress.stageIndex;
+    const current = index === progress.stageIndex;
+    const disabled = !unlocked || !current;
+    return `<button type="button" class="history-stage${done ? ' complete' : ''}${current ? ' current' : ''}${disabled ? ' locked' : ''}" data-history-stage="${index}" ${disabled ? 'disabled' : ''}>
+      <span class="stage-node">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><span class="stage-copy"><strong>${entry.title}</strong><small>${entry.location}</small></span><span class="stage-state">${done ? 'CONCLUÍDO' : current ? 'ATUAL' : 'BLOQUEADO'}</span>
+    </button>`;
+  }).join('');
+}
+
+function openHistorySelection() {
+  historySelectedCharacter = state.selected;
+  $('#modes-modal').hidden = true;
+  $('#history-select').hidden = false;
+  renderHistorySelection();
+  $('#history-back').focus();
+}
+
+function openVersusSelection() {
+  versusSelection.players = [state.selected, (state.selected + 1) % characters.length];
+  versusSelection.activePlayer = 0;
+  $('#modes-modal').hidden = true;
+  $('#versus-select').hidden = false;
+  renderVersusSelection();
+  $('#versus-back').focus();
+}
+
+function renderVersusSelection() {
+  const first = characters[versusSelection.players[0]];
+  const second = characters[versusSelection.players[1]];
+  $('#versus-name-one').textContent = first.name.toUpperCase();
+  $('#versus-name-two').textContent = second.name.toUpperCase();
+  $('#versus-player-one').classList.toggle('active', versusSelection.activePlayer === 0);
+  $('#versus-player-two').classList.toggle('active', versusSelection.activePlayer === 1);
+  $('#versus-roster').innerHTML = characters.map((character, index) => {
+    const portrait = character.portraitDataUrl || character.spriteAsset.url;
+    const selectedBy = versusSelection.players.flatMap((selection, player) => selection === index ? [player + 1] : []);
+    return `<button type="button" class="versus-character${selectedBy.includes(1) ? ' p1-selected' : ''}${selectedBy.includes(2) ? ' p2-selected' : ''}" data-versus-character="${index}" style="--fighter-color:${character.color}" aria-label="Selecionar ${character.name}">
+      <img src="${portrait}" alt=""><strong>${character.short}</strong><small>PARTE ${String(character.part).padStart(2, '0')}</small><i>${selectedBy.map((player) => `P${player}`).join(' + ')}</i>
+    </button>`;
+  }).join('');
+  $('#versus-hint').textContent = `PLAYER ${versusSelection.activePlayer + 1}: escolha um personagem. Clique no cartão do jogador para alternar.`;
+}
+
+function startLocalVersus() {
+  state.selected = versusSelection.players[0];
+  $('#versus-select').hidden = true;
+  gameStarted = true;
+  resetBattle('versus', { localPvp: true, opponentIndex: versusSelection.players[1] });
+  updateInterface(true);
+}
+
+function returnSelectionToModes(selectionId) {
+  $(selectionId).hidden = true;
+  openModesModal();
+}
+
+$('#history-character-list').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-history-character]');
+  if (!card || card.disabled) return;
+  historySelectedCharacter = Number(card.dataset.historyCharacter);
+  renderHistorySelection();
+});
+$('#history-stage-map').addEventListener('click', (event) => {
+  const stage = event.target.closest('[data-history-stage]');
+  if (stage && !stage.disabled) renderHistorySelection();
+});
+$('#history-start').addEventListener('click', () => {
+  const character = characters[historySelectedCharacter];
+  if (!hasCampaignAccess(character.id)) return;
+  state.selected = historySelectedCharacter;
+  $('#history-select').hidden = true;
+  gameStarted = true;
+  resetBattle('campaign');
+});
+$('#history-back').addEventListener('click', () => returnSelectionToModes('#history-select'));
+$('#versus-player-one').addEventListener('click', () => { versusSelection.activePlayer = 0; renderVersusSelection(); });
+$('#versus-player-two').addEventListener('click', () => { versusSelection.activePlayer = 1; renderVersusSelection(); });
+$('#versus-roster').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-versus-character]');
+  if (!card) return;
+  versusSelection.players[versusSelection.activePlayer] = Number(card.dataset.versusCharacter);
+  versusSelection.activePlayer = 1 - versusSelection.activePlayer;
+  renderVersusSelection();
+});
+$('#versus-start').addEventListener('click', startLocalVersus);
+$('#versus-back').addEventListener('click', () => returnSelectionToModes('#versus-select'));
 
 $('#modes-button').addEventListener('click', openModesModal);
 $('#modes-close').addEventListener('click', closeModesModal);
+$('#title-start').addEventListener('click', startTitleFlow);
 $('#modes-modal').addEventListener('pointerdown', (event) => {
   if (event.target === event.currentTarget) closeModesModal();
 });
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !$('#modes-modal').hidden) closeModesModal();
+  if (event.key !== 'Escape') return;
+  if (!$('#history-select').hidden) returnSelectionToModes('#history-select');
+  else if (!$('#versus-select').hidden) returnSelectionToModes('#versus-select');
+  else if (!$('#modes-modal').hidden) closeModesModal();
 });
+
+function updateFullscreenButton() {
+  const isFullscreen = Boolean(document.fullscreenElement);
+  const button = $('#fullscreen-button');
+  $('#fullscreen-status').hidden = true;
+  const label = isFullscreen ? 'SAIR DA TELA CHEIA' : 'TELA CHEIA';
+  button.querySelector('.fullscreen-label').textContent = label;
+  button.setAttribute('aria-label', isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia');
+  button.title = isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia';
+}
+
+async function requestGameFullscreen() {
+  const status = $('#fullscreen-status');
+  status.hidden = true;
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    } else if (!document.fullscreenElement) {
+      throw new Error('A tela cheia não é compatível com este navegador.');
+    }
+  } catch (error) {
+    console.error('Não foi possível iniciar o jogo em tela cheia.', error);
+    status.textContent = error.message || 'Não foi possível ativar a tela cheia.';
+    status.hidden = false;
+  }
+}
+
+$('#fullscreen-button').addEventListener('click', async () => {
+  const status = $('#fullscreen-status');
+  if (!document.fullscreenElement) {
+    await requestGameFullscreen();
+    return;
+  }
+  status.hidden = true;
+  try {
+    await document.exitFullscreen();
+  } catch (error) {
+    console.error('Não foi possível sair do modo de tela cheia.', error);
+    status.textContent = error.message || 'Não foi possível sair da tela cheia.';
+    status.hidden = false;
+  }
+});
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+updateFullscreenButton();
 
 $('#modes-grid').innerHTML = ROHAN_MODES.map((mode) =>
   `<button class="mode-card" type="button" data-rohan-mode="${mode.id}">
@@ -2835,31 +3209,29 @@ $('#modes-grid').addEventListener('click', (event) => {
   if (!card) return;
   const mode = card.dataset.rohanMode;
   if (mode === 'story') {
-    closeModesModal();
-    switchMode('campaign');
+    openHistorySelection();
   } else if (mode === 'versus') {
-    closeModesModal();
-    resetBattle('versus');
+    openVersusSelection();
   } else if (mode === 'training') {
-    closeModesModal();
+    beginGameFromMenu();
     resetBattle('training');
   } else if (mode === 'chronicles') {
     renderRohanChronicles();
     $('#rohan-chronicles').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } else if (mode === 'party') {
-    closeModesModal();
+    beginGameFromMenu();
     showToast('Party Game preparado: teste de reação iniciado.');
   } else if (mode === 'tournament') {
-    closeModesModal();
+    beginGameFromMenu();
     showToast('Torneio local criado: 16 vagas preparadas contra IA.');
   } else if (mode === 'ranked') {
-    closeModesModal();
+    beginGameFromMenu();
     resetBattle('versus');
   } else if (mode === 'beat-em-up') {
-    closeModesModal();
+    beginGameFromMenu();
     resetBattle('versus');
   } else if (mode === 'arcade') {
-    closeModesModal();
+    beginGameFromMenu();
     switchMode('campaign');
   } else {
     showToast('Este modo está preparado para integração futura e não usa dados fictícios online.');
@@ -2925,7 +3297,7 @@ const gameConfig = {
   parent: 'game',
   width: ARENA_WIDTH,
   height: ARENA_HEIGHT,
-  backgroundColor: '#28352b',
+  backgroundColor: '#151724',
   pixelArt: true,
   roundPixels: true,
   render: { antialias: false },

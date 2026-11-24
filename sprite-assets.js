@@ -100,6 +100,8 @@ const aliases = Object.freeze({
   'diego brando': ['Diego'],
   'dio': ['Dio_3', 'Dio_1'],
   'dio brando': ['Dio_1', 'Dio'],
+  'kosaku kawajiri': ['Kira_1'],
+  'kosaku': ['Kira_1'],
   'enrico pucci': ['Pucci'],
   'yoshikage kira': ['Kira_2', 'kira_1', 'Yoshikage Kira', 'Kira'],
   'kars': ['Kars_2', 'Kars'],

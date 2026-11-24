@@ -39,8 +39,14 @@ test('os nove protagonistas encontram o próprio retrato na pasta Protagonista',
 
 test('chefes, antagonistas, aliados e DIO Over Heaven usam as pastas designadas', () => {
   const cases = [
+    ['finalBoss', ['Dio Brando'], 'Chefe-Final', 'Dio_1'],
+    ['finalBoss', ['Dio'], 'Chefe-Final', 'Dio_3'],
+    ['finalBoss', ['Kars'], 'Chefe-Final', 'Kars'],
     ['finalBoss', ['Yoshikage Kira', 'Kira_2'], 'Chefe-Final', 'Kira_2'],
+    ['finalBoss', ['Kosaku Kawajiri'], 'Chefe-Final', 'kira_1'],
+    ['finalBoss', ['Diavolo'], 'Chefe-Final', 'Diavolo'],
     ['finalBoss', ['Enrico Pucci'], 'Chefe-Final', 'Pucci'],
+    ['finalBoss', ['Funny Valentine'], 'Chefe-Final', 'funny-valentine'],
     ['antagonist', ['Jack, o Estripador', 'Jack_Jojo'], 'Boss-Secundário', 'Jack_Jojo'],
     ['antagonist', ['Aisho Dainenjiyama'], 'Boss-Secundário', 'Aisho Dainenjiyama'],
     ['ally', ['Noriaki Kakyoin', 'Kakyoin'], 'Aliados-do-Protagonista', 'Kakyoin'],

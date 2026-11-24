@@ -49,6 +49,15 @@ test('cada um dos nove protagonistas possui fases estáveis com objetivos e chef
   }
 });
 
+test('Josuke enfrenta Kosaku antes do confronto final com Yoshikage Kira', () => {
+  const stages = getCampaign('josuke4').stages;
+  const kosakuStage = stages.findIndex((stage) => stage.enemies.some((enemy) => enemy.name === 'Kosaku Kawajiri'));
+  const kiraStage = stages.findIndex((stage) => stage.enemies.some((enemy) => enemy.name === 'Yoshikage Kira'));
+
+  assert.ok(kosakuStage >= 0);
+  assert.ok(kiraStage > kosakuStage);
+});
+
 test('a máquina não pula estados nem aceita vitória de inimigo fora do confronto atual', () => {
   const save = normalizeSave(SAVE_DEFAULT, campaigns);
   const campaign = getCampaign('jonathan');
