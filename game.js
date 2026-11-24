@@ -164,7 +164,13 @@ function loadSave() {
 
 const save = loadSave();
 const rohanProfile = loadRohanProfile();
+function loadGameSettings() {
+  try { return { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '', ...JSON.parse(localStorage.getItem('eternal-destiny-settings-v1')) }; }
+  catch { return { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '' }; }
+}
+let gameSettings = loadGameSettings();
 const state = {
+  paused: false,
   selected: 0,
   mode: 'campaign',
   localPvp: false,
@@ -186,6 +192,10 @@ const state = {
   invulnerable: 0,
   assistCooldown: 0,
   assist: null,
+  paused: false,
+  arenaMode: null,
+  matchRoundTime: 180,
+  matchRounds: 3,
   screenShake: 0,
   cinematicUntil: 0,
   sound: false,
@@ -243,6 +253,12 @@ function isPart3Dio(enemy) {
   return selectedCampaign()?.id === 'jotaro' && normalizeVillainName(enemy?.name || '') === 'dio';
 }
 function hasCampaignAccess(characterId) { return save.story.unlockedCampaignIds.includes(characterId); }
+function isFullStoryComplete() {
+  return campaigns.every((campaign) => currentCampaignProgress(campaign.id).phase === STORY_PHASES.CAMPAIGN_COMPLETE);
+}
+function hasAllUnlocked() {
+  try { return localStorage.getItem('eternal-destiny-master-unlocked') === 'true'; } catch { return false; }
+}
 function isOverHeaven() { return state.mode === 'final' && state.secretPhase === 2 && state.jotaroAwakened && selectedCharacter().id === 'jotaro'; }
 function availableSkills() { return isOverHeaven() ? selectedCharacter().heavenSkills : selectedCharacter().skills; }
 function isUnlocked(skill, character = selectedCharacter()) {
@@ -685,6 +701,7 @@ function continueStory() {
 
 function buildRoster() {
   const roster = $('#roster');
+  if (!roster) return;
   roster.innerHTML = '';
   characters.forEach((character, index) => {
     const unlocked = hasCampaignAccess(character.id);
@@ -968,8 +985,9 @@ function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } 
   if (mode === 'final') {
     state.storyStage = null;
     prepareSecretMode();
-  } else if (mode === 'versus' || mode === 'training') {
+  } else if (mode === 'versus' || mode === 'training' || ['party', 'beat-em-up', 'stealth', 'tower-defense', 'race'].includes(mode)) {
     state.storyStage = null;
+    state.arenaMode = mode;
     if (state.localPvp) {
       const opponent = characters[state.versusOpponentIndex];
       state.enemies = [{
@@ -996,6 +1014,8 @@ function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } 
         dashX: -1,
         dashY: 0,
         invulnerable: 0,
+        energy: 100,
+        maxEnergy: 100,
         playerTwo: true,
         spriteAsset: opponent.spriteAsset,
         physicsZone: null,
@@ -1012,6 +1032,8 @@ function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } 
       y: 245,
       hp: mode === 'training' ? 500 : 520,
       maxHp: mode === 'training' ? 500 : 520,
+      energy: 100,
+      maxEnergy: 100,
       color: '#94a8cf',
       size: 1.08,
       pattern: 'ranged',
@@ -1027,6 +1049,16 @@ function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } 
     attachPhysicsBodies();
     $('#battle-message').textContent = mode === 'training'
       ? 'Estúdio do Rohan: teste ataques, habilidades e padrões da IA.'
+      : mode === 'party'
+      ? 'PARTY GAME · Reação rápida: acerte os desafios e derrube Rohan.'
+      : mode === 'beat-em-up'
+      ? 'BEAT EM UP · Ondas locais: sobreviva aos inimigos até o chefe.'
+      : mode === 'stealth'
+      ? 'Furtividade · Entre na área sem ser detectado por Rohan.'
+      : mode === 'tower-defense'
+      ? 'Tower Defense · Defesa por ondas com aliados e habilidades.'
+      : mode === 'race'
+      ? 'Corrida · Alcance o ponto final usando velocidade e dash.'
       : 'Versus local: derrote Rohan Kishibe. Heaven\'s Door está ativo.';
     }
   } else {
@@ -1063,7 +1095,7 @@ function selectCharacter(index) {
 }
 
 function switchMode(mode) {
-  if (mode === 'final' && !save.story.secretUnlocked) {
+  if (mode === 'final' && (!save.story.secretUnlocked || (!isFullStoryComplete() && !hasAllUnlocked()))) {
     showToast('Conclua os capítulos disponíveis das nove campanhas para liberar esta história.');
     return;
   }
@@ -1606,6 +1638,7 @@ function requestAssist() {
 }
 
 function update(dt, timestamp) {
+  if (state.paused) return;
   state.elapsed += dt;
   state.attackCooldown = Math.max(0, state.attackCooldown - dt);
   state.invulnerable = Math.max(0, state.invulnerable - dt);
@@ -2792,6 +2825,11 @@ function updateInterface(force = false) {
       ? `${selectedCharacter().short} VS ${characters[state.versusOpponentIndex].short}`
       : 'Versus · Autor Furioso';
     else if (state.mode === 'training') $('#fight-title').textContent = 'Estúdio do Rohan';
+    else if (state.mode === 'party') $('#fight-title').textContent = 'Party Game';
+    else if (state.mode === 'beat-em-up') $('#fight-title').textContent = 'Beat em Up · Ondas';
+    else if (state.mode === 'stealth') $('#fight-title').textContent = 'Modo Furtividade';
+    else if (state.mode === 'tower-defense') $('#fight-title').textContent = 'Tower Defense';
+    else if (state.mode === 'race') $('#fight-title').textContent = 'Corrida · Steel Ball Run';
     else if (state.mode === 'campaign') $('#fight-title').textContent = stage?.title || (campaign.openEnded ? 'A campanha continua' : `${campaign.protagonist} · campanha concluída`);
     else if (state.secretRunPhase?.startsWith('revenge')) $('#fight-title').textContent = state.storyStage?.title || 'Revanche';
     else if (state.secretRunPhase === 'final-intro') $('#fight-title').textContent = 'As nove Partes se reencontram';
@@ -2806,14 +2844,22 @@ function updateInterface(force = false) {
   $('#energy-fill').style.width = `${state.player.energy / state.player.maxEnergy * 100}%`;
   $('#energy-label').textContent = `${Math.floor(state.player.energy)} / ${state.player.maxEnergy}`;
 
-  $('#boss-bars').innerHTML = state.enemies.map((enemy) => `<div class="boss-bar-row"><span>${enemy.playerTwo ? 'P2' : enemy.id === 'dio-heaven' ? 'DIO' : enemy.id === 'pucci-heaven' ? 'PUCCI' : 'BOSS'}</span><div class="meter"><div class="boss-fill" style="width:${Math.max(0, enemy.hp / enemy.maxHp * 100)}%"></div></div><b>${Math.ceil(enemy.hp)} / ${enemy.maxHp}</b></div>`).join('') || '<span style="color:#939c94;font-size:8px">AGUARDANDO TRANSFORMAÇÃO</span>';
+  $('#boss-bars').innerHTML = state.enemies.map((enemy) => {
+    const enemyName = enemy.playerTwo ? 'P2' : enemy.id === 'dio-heaven' ? 'DIO' : enemy.id === 'pucci-heaven' ? 'PUCCI' : 'VIDA';
+    const maxEnergy = enemy.maxEnergy || 100;
+    const energy = enemy.energy ?? maxEnergy;
+    return `<div class="boss-bar-row"><span>${enemyName}</span><div class="meter"><div class="boss-fill" style="width:${Math.max(0, enemy.hp / enemy.maxHp * 100)}%"></div></div><b>${Math.ceil(enemy.hp)} / ${enemy.maxHp}</b></div>
+      <div class="boss-bar-row enemy-stamina-row"><span>STAMINA</span><div class="meter"><div class="meter-fill energy-fill" style="width:${Math.max(0, energy / maxEnergy * 100)}%"></div></div><b>${Math.ceil(energy)} / ${maxEnergy}</b></div>`;
+  }).join('') || '<span style="color:#939c94;font-size:8px">AGUARDANDO TRANSFORMAÇÃO</span>';
   updatePowerRow();
   const assistButton = $('#assist-button');
+  assistButton.hidden = state.mode !== 'final';
   const assistEnabled = state.mode === 'final' && state.secretPhase === 2 && state.fightActive && !state.assist && state.assistCooldown <= 0;
   assistButton.disabled = !assistEnabled;
   $('#assist-timer').textContent = state.assist ? 'ALIADO NA ARENA' : state.assistCooldown > 0 ? `${Math.ceil(state.assistCooldown)} S` : state.mode === 'final' && state.secretPhase === 2 ? 'PRONTA' : 'FASE 2';
+  const secretAvailable = save.story.secretUnlocked && isFullStoryComplete();
   document.querySelectorAll('.mode-button').forEach((button) => {
-    if (button.dataset.mode === 'final') button.disabled = !save.story.secretUnlocked;
+    if (button.dataset.mode === 'final') button.disabled = !secretAvailable;
   });
   document.querySelectorAll('.roster-entry').forEach((button, index) => {
     const unlocked = hasCampaignAccess(characters[index].id);
@@ -2967,7 +3013,7 @@ $('#sound-button').addEventListener('click', () => {
   if (state.sound) { startTheme(); playTone(480); }
   else window.clearInterval(musicTimer);
 });
-$('#reset-button').addEventListener('click', () => {
+function resetProgress() {
   if (!window.confirm('Apagar todo o progresso salvo e voltar à primeira missão da Parte 1?')) return;
   save.advanced = [];
   save.supreme = [];
@@ -2975,8 +3021,34 @@ $('#reset-button').addEventListener('click', () => {
   save.story = normalizeSave(null, campaigns).story;
   state.selected = 0;
   persistSave();
+  closePauseModal();
   resetBattle('campaign');
   showToast('Progresso reiniciado. Parte 1, primeira missão.');
+}
+
+function openPauseModal() {
+  if (!gameStarted) return;
+  state.paused = true;
+  $('#pause-modal').hidden = false;
+  $('#pause-resume').focus();
+}
+
+function closePauseModal() {
+  state.paused = false;
+  $('#pause-modal').hidden = true;
+  $('#game').focus({ preventScroll: true });
+}
+
+$('#pause-button').addEventListener('click', openPauseModal);
+$('#pause-resume').addEventListener('click', closePauseModal);
+$('#pause-reset').addEventListener('click', resetProgress);
+$('#pause-history').addEventListener('click', () => {
+  closePauseModal();
+  openHistorySelection();
+});
+$('#pause-modes').addEventListener('click', () => {
+  closePauseModal();
+  openModesModal();
 });
 
 function renderRohanChronicles() {
@@ -2999,15 +3071,18 @@ function openModesModal() {
   const modal = $('#modes-modal');
   modal.hidden = false;
   renderRohanChronicles();
+  $('#rohan-chronicles').hidden = true;
   $('#modes-close').focus();
 }
 
 let gameStarted = false;
 
 function startTitleFlow() {
-  $('#title-screen').hidden = true;
+  const title = $('#title-screen');
+  if (title) title.hidden = true;
+  gameStarted = true;
   openModesModal();
-  requestGameFullscreen();
+  void requestGameFullscreen();
 }
 
 function beginGameFromMenu() {
@@ -3070,7 +3145,8 @@ function openHistorySelection() {
 }
 
 function openVersusSelection() {
-  versusSelection.players = [state.selected, (state.selected + 1) % characters.length];
+  const unlockedIndices = characters.map((character, index) => hasCampaignAccess(character.id) ? index : -1).filter((index) => index >= 0);
+  versusSelection.players = [unlockedIndices.includes(state.selected) ? state.selected : unlockedIndices[0], unlockedIndices.find((index) => index !== (unlockedIndices.includes(state.selected) ? state.selected : unlockedIndices[0])) || 0];
   versusSelection.activePlayer = 0;
   $('#modes-modal').hidden = true;
   $('#versus-select').hidden = false;
@@ -3085,13 +3161,18 @@ function renderVersusSelection() {
   $('#versus-name-two').textContent = second.name.toUpperCase();
   $('#versus-player-one').classList.toggle('active', versusSelection.activePlayer === 0);
   $('#versus-player-two').classList.toggle('active', versusSelection.activePlayer === 1);
-  $('#versus-roster').innerHTML = characters.map((character, index) => {
+  const characterCards = characters.map((character, index) => {
     const portrait = character.portraitDataUrl || character.spriteAsset.url;
+    const unlocked = hasCampaignAccess(character.id);
     const selectedBy = versusSelection.players.flatMap((selection, player) => selection === index ? [player + 1] : []);
-    return `<button type="button" class="versus-character${selectedBy.includes(1) ? ' p1-selected' : ''}${selectedBy.includes(2) ? ' p2-selected' : ''}" data-versus-character="${index}" style="--fighter-color:${character.color}" aria-label="Selecionar ${character.name}">
-      <img src="${portrait}" alt=""><strong>${character.short}</strong><small>PARTE ${String(character.part).padStart(2, '0')}</small><i>${selectedBy.map((player) => `P${player}`).join(' + ')}</i>
+    return `<button type="button" class="versus-character${selectedBy.includes(1) ? ' p1-selected' : ''}${selectedBy.includes(2) ? ' p2-selected' : ''}${unlocked ? '' : ' locked'}" data-versus-character="${index}" style="--fighter-color:${character.color}" aria-label="${unlocked ? `Selecionar ${character.name}` : `${character.name} bloqueado`}" ${unlocked ? '' : 'disabled'}>
+      <img src="${portrait}" alt=""><strong>${character.short}</strong><small>${unlocked ? `PARTE ${String(character.part).padStart(2, '0')}` : 'CAPÍTULO BLOQUEADO'}</small><i>${selectedBy.map((player) => `P${player}`).join(' + ')}</i>
     </button>`;
   }).join('');
+  const unlockedVillains = campaigns.filter((campaign) => currentCampaignProgress(campaign.id).phase === STORY_PHASES.CAMPAIGN_COMPLETE).map((campaign) => campaign.secretBoss);
+  if (rohanProfile.rohanUnlocked) unlockedVillains.push('Rohan Kishibe');
+  const villainCards = [...new Set(unlockedVillains)].map((name) => `<div class="versus-character villain-unlocked" style="--fighter-color:#94a8cf"><strong>VILÃO DESBLOQUEADO</strong><small>${name.toUpperCase()}</small></div>`).join('');
+  $('#versus-roster').innerHTML = characterCards + villainCards;
   $('#versus-hint').textContent = `PLAYER ${versusSelection.activePlayer + 1}: escolha um personagem. Clique no cartão do jogador para alternar.`;
 }
 
@@ -3141,62 +3222,166 @@ $('#versus-back').addEventListener('click', () => returnSelectionToModes('#versu
 
 $('#modes-button').addEventListener('click', openModesModal);
 $('#modes-close').addEventListener('click', closeModesModal);
-$('#title-start').addEventListener('click', startTitleFlow);
+$('#title-start')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  startTitleFlow();
+});
 $('#modes-modal').addEventListener('pointerdown', (event) => {
   if (event.target === event.currentTarget) closeModesModal();
 });
 window.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+  if (!$('#settings-modal').hidden) { $('#settings-modal').hidden = true; return; }
+  if (!$('#match-modal').hidden) { $('#match-modal').hidden = true; return; }
+  if (!$('#pause-modal').hidden) { closePauseModal(); return; }
+  if (gameStarted && $('#modes-modal').hidden && $('#history-select').hidden && $('#versus-select').hidden) { openPauseModal(); return; }
   if (!$('#history-select').hidden) returnSelectionToModes('#history-select');
   else if (!$('#versus-select').hidden) returnSelectionToModes('#versus-select');
   else if (!$('#modes-modal').hidden) closeModesModal();
 });
 
-function updateFullscreenButton() {
-  const isFullscreen = Boolean(document.fullscreenElement);
-  const button = $('#fullscreen-button');
-  $('#fullscreen-status').hidden = true;
-  const label = isFullscreen ? 'SAIR DA TELA CHEIA' : 'TELA CHEIA';
-  button.querySelector('.fullscreen-label').textContent = label;
-  button.setAttribute('aria-label', isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia');
-  button.title = isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia';
-}
-
 async function requestGameFullscreen() {
-  const status = $('#fullscreen-status');
-  status.hidden = true;
   try {
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen();
-    } else if (!document.fullscreenElement) {
-      throw new Error('A tela cheia não é compatível com este navegador.');
     }
   } catch (error) {
-    console.error('Não foi possível iniciar o jogo em tela cheia.', error);
-    status.textContent = error.message || 'Não foi possível ativar a tela cheia.';
-    status.hidden = false;
+    console.warn('Tela cheia não permitida pelo navegador:', error);
   }
 }
 
-$('#fullscreen-button').addEventListener('click', async () => {
-  const status = $('#fullscreen-status');
-  if (!document.fullscreenElement) {
-    await requestGameFullscreen();
-    return;
+function detectDevice() {
+  const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  return touch ? 'CELULAR / TELA TOUCH' : 'COMPUTADOR / TECLADO';
+}
+
+function openSettingsModal() {
+  $('#settings-modal').hidden = false;
+  $('#settings-player-name').value = gameSettings.playerName || 'Jogador Local';
+  $('#settings-supabase-url').value = gameSettings.supabaseUrl || '';
+  $('#settings-supabase-key').value = gameSettings.supabaseKey || '';
+  $('#settings-device').textContent = detectDevice();
+  $('#settings-close').focus();
+}
+
+$('#settings-button').addEventListener('click', openSettingsModal);
+$('#settings-close').addEventListener('click', () => { $('#settings-modal').hidden = true; });
+$('#settings-modal').addEventListener('pointerdown', (event) => {
+  if (event.target === event.currentTarget) $('#settings-modal').hidden = true;
+});
+$('#settings-save').addEventListener('click', () => {
+  const password = $('#settings-master-password').value.trim();
+  if (password) {
+    if (password === 'JOJO-ALL-4-DESTINY') {
+      localStorage.setItem('eternal-destiny-master-unlocked', 'true');
+      save.story.unlockedCampaignIds = campaigns.map((campaign) => campaign.id);
+      save.story.secretUnlocked = true;
+      save.advanced = characters.map((character) => character.id);
+      save.supreme = characters.map((character) => character.id);
+      save.victories = characters.map((character) => character.id);
+      persistSave();
+      showToast('Senha mestre aceita. Todo o jogo foi desbloqueado.');
+    } else {
+      showToast('Senha mestre inválida.');
+    }
   }
-  status.hidden = true;
+  gameSettings = {
+    playerName: $('#settings-player-name').value.trim() || 'Jogador Local',
+    supabaseUrl: $('#settings-supabase-url').value.trim().replace(/\/$/, ''),
+    supabaseKey: $('#settings-supabase-key').value.trim(),
+  };
+  rohanProfile.playerName = gameSettings.playerName;
+  saveRohanProfile(rohanProfile);
+  localStorage.setItem('eternal-destiny-settings-v1', JSON.stringify(gameSettings));
+  $('#settings-master-password').value = '';
+  $('#settings-modal').hidden = true;
+});
+$('#settings-reset').addEventListener('click', () => {
+  localStorage.removeItem('eternal-destiny-settings-v1');
+  localStorage.removeItem('eternal-destiny-master-unlocked');
+  gameSettings = { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '' };
+  $('#settings-player-name').value = gameSettings.playerName;
+  $('#settings-supabase-url').value = '';
+  $('#settings-supabase-key').value = '';
+  showToast('Configurações locais restauradas.');
+});
+
+let matchChannel = null;
+let activeMatchMode = 'RANQUEADA';
+
+function makeMatchCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+}
+
+function openMatchModal(mode) {
+  activeMatchMode = mode;
+  $('#match-mode-label').textContent = mode;
+  $('#match-code').value = '';
+  $('#match-status').textContent = gameSettings.supabaseUrl && gameSettings.supabaseKey
+    ? 'Supabase conectado. Crie ou entre em uma sala.'
+    : 'Modo local de rede. Todos na mesma janela podem compartilhar o código.';
+  $('#match-modal').hidden = false;
+  $('#match-code').focus();
+}
+
+async function supabaseRoomRequest(path, options = {}) {
+  if (!gameSettings.supabaseUrl || !gameSettings.supabaseKey) throw new Error('Supabase não configurado.');
+  const response = await fetch(`${gameSettings.supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: gameSettings.supabaseKey,
+      Authorization: `Bearer ${gameSettings.supabaseKey}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  if (!response.ok) throw new Error(`Supabase: ${await response.text()}`);
+  return response.status === 204 ? null : response.json();
+}
+
+$('#match-close').addEventListener('click', () => { $('#match-modal').hidden = true; });
+$('#match-create').addEventListener('click', async () => {
+  const code = makeMatchCode();
+  $('#match-code').value = code;
   try {
-    await document.exitFullscreen();
+    if (gameSettings.supabaseUrl && gameSettings.supabaseKey) {
+      await supabaseRoomRequest('match_rooms', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify([{ code, mode: activeMatchMode, status: 'waiting', host: gameSettings.playerName, payload: { rounds: 3, seconds: 180 } }]),
+      });
+    } else {
+      matchChannel = new BroadcastChannel(`eternal-destiny-${code}`);
+      matchChannel.postMessage({ type: 'room-created', code, mode: activeMatchMode, player: gameSettings.playerName });
+    }
+    $('#match-status').textContent = `Sala criada: ${code}. Compartilhe este código via Wi-Fi.`;
   } catch (error) {
-    console.error('Não foi possível sair do modo de tela cheia.', error);
-    status.textContent = error.message || 'Não foi possível sair da tela cheia.';
-    status.hidden = false;
+    $('#match-status').textContent = error.message;
   }
 });
-document.addEventListener('fullscreenchange', updateFullscreenButton);
-updateFullscreenButton();
+$('#match-join').addEventListener('click', async () => {
+  const code = $('#match-code').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    $('#match-status').textContent = 'Informe um código válido da sala.';
+    return;
+  }
+  try {
+    if (gameSettings.supabaseUrl && gameSettings.supabaseKey) {
+      const rooms = await supabaseRoomRequest(`match_rooms?code=eq.${encodeURIComponent(code)}&select=*`);
+      if (!rooms?.length) throw new Error('Sala não encontrada no Supabase.');
+    } else {
+      matchChannel = new BroadcastChannel(`eternal-destiny-${code}`);
+    }
+    $('#match-modal').hidden = true;
+    openVersusSelection();
+  } catch (error) {
+    $('#match-status').textContent = error.message;
+  }
+});
 
-$('#modes-grid').innerHTML = ROHAN_MODES.map((mode) =>
+$('#modes-grid').innerHTML = ROHAN_MODES.filter((mode) => ['arcade', 'online', 'training', 'chronicles'].includes(mode.id)).map((mode) =>
   `<button class="mode-card" type="button" data-rohan-mode="${mode.id}">
     <strong>${mode.title}</strong>
     <p>${mode.description}</p>
@@ -3217,22 +3402,44 @@ $('#modes-grid').addEventListener('click', (event) => {
     resetBattle('training');
   } else if (mode === 'chronicles') {
     renderRohanChronicles();
+    $('#rohan-chronicles').hidden = false;
     $('#rohan-chronicles').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } else if (mode === 'party') {
     beginGameFromMenu();
-    showToast('Party Game preparado: teste de reação iniciado.');
+    resetBattle('party');
   } else if (mode === 'tournament') {
-    beginGameFromMenu();
-    showToast('Torneio local criado: 16 vagas preparadas contra IA.');
+    openMatchModal('TORNEIO');
   } else if (mode === 'ranked') {
-    beginGameFromMenu();
-    resetBattle('versus');
+    openMatchModal('RANQUEADA');
   } else if (mode === 'beat-em-up') {
     beginGameFromMenu();
-    resetBattle('versus');
-  } else if (mode === 'arcade') {
+    resetBattle('beat-em-up');
+  } else if (mode === 'stealth') {
     beginGameFromMenu();
-    switchMode('campaign');
+    resetBattle('stealth');
+  } else if (mode === 'tower-defense') {
+    beginGameFromMenu();
+    resetBattle('tower-defense');
+  } else if (mode === 'race') {
+    beginGameFromMenu();
+    resetBattle('race');
+  } else if (mode === 'training') {
+    beginGameFromMenu();
+    resetBattle('training');
+  } else if (mode === 'arcade') {
+    $('#modes-grid').innerHTML = ['ranked', 'tournament', 'party', 'beat-em-up', 'training', 'stealth', 'tower-defense', 'race'].map((id) => {
+      const submode = ROHAN_MODES.find((entry) => entry.id === id);
+      return `<button class="mode-card" type="button" data-rohan-mode="${submode.id}"><strong>${submode.title}</strong><p>${submode.description}</p><span class="mode-status">ARCADE</span></button>`;
+    }).join('') + '<button class="mode-card" type="button" data-rohan-mode="back"><strong>VOLTAR</strong><p>Retornar aos modos principais.</p><span class="mode-status">MENU</span></button>';
+  } else if (mode === 'online') {
+    $('#modes-grid').innerHTML = ['versus', 'ranked', 'tournament', 'challenges', 'party'].map((id) => {
+      const submode = ROHAN_MODES.find((entry) => entry.id === id);
+      return `<button class="mode-card" type="button" data-rohan-mode="${submode.id}"><strong>${submode.title}</strong><p>${submode.description}</p><span class="mode-status">${submode.status}</span></button>`;
+    }).join('') + '<button class="mode-card" type="button" data-rohan-mode="back"><strong>VOLTAR</strong><p>Retornar aos modos principais.</p><span class="mode-status">MENU</span></button>';
+  } else if (mode === 'back') {
+    $('#modes-grid').innerHTML = ROHAN_MODES.filter((entry) => ['arcade', 'online', 'training', 'chronicles'].includes(entry.id)).map((entry) => `<button class="mode-card" type="button" data-rohan-mode="${entry.id}"><strong>${entry.title}</strong><p>${entry.description}</p><span class="mode-status">${entry.status}</span></button>`).join('');
+  } else if (mode === 'challenges') {
+    showToast('Desafios multiplayer aguardam integração de servidor.');
   } else {
     showToast('Este modo está preparado para integração futura e não usa dados fictícios online.');
   }

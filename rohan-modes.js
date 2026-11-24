@@ -2,9 +2,9 @@ const STORAGE_KEY = 'eternal-destiny-rohan-modes-v1';
 
 export const ROHAN_MODES = Object.freeze([
   { id: 'story', title: 'Modo História', description: 'Campanhas das nove partes e progressão original.', status: 'Disponível' },
-  { id: 'arcade', title: 'Modo Arcade', description: 'Sequências rápidas contra adversários locais.', status: 'Local' },
-  { id: 'versus', title: 'Modo Versus', description: 'Confronto local contra Rohan ou uma IA configurável.', status: 'Disponível' },
-  { id: 'online', title: 'Modo Online', description: 'Salas e partidas sincronizadas.', status: 'Servidor necessário' },
+  { id: 'arcade', title: 'Modo Arcade', description: 'Arcade: treinamentos, ranqueadas, torneios e desafios rápidos.', status: 'Menu local' },
+  { id: 'versus', title: 'Modo Versus', description: 'Confronto local com lutadores desbloqueados pelas campanhas.', status: 'Disponível' },
+  { id: 'online', title: 'Modo Online', description: 'Versus, ranqueadas e torneios preparados para servidor.', status: 'Servidor necessário' },
   { id: 'ranked', title: 'Modo Ranqueado', description: 'Pontuação local preparada para pareamento competitivo.', status: 'Local' },
   { id: 'tournament', title: 'Modo Torneio', description: 'Chave eliminatória local com até 16 participantes.', status: 'Local' },
   { id: 'party', title: 'Party Game', description: 'Desafios rápidos de reação e observação.', status: 'Disponível' },
