@@ -166,6 +166,18 @@
       <div class="unlock-banner" id="unlock-banner" aria-live="assertive"><span class="unlock-eyebrow">NOVO PODER DESBLOQUEADO!</span><strong id="unlock-name"></strong></div>
     </main>
     <script src="./vendor/phaser.min.js"></script>
+    <script>
+      document.addEventListener('click', (event) => {
+        const startButton = event.target.closest('#title-start');
+        if (!startButton) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const title = document.getElementById('title-screen');
+        const modes = document.getElementById('modes-modal');
+        if (title) title.hidden = true;
+        if (modes) modes.hidden = false;
+      });
+    </script>
     <script type="module" src="./game.js"></script>
   </body>
 </html>
