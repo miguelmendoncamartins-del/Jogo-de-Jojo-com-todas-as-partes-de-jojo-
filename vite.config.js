@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { cpSync } from 'node:fs';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 const lanRooms = new Map();
 
@@ -12,6 +13,14 @@ function readJson(req) {
     });
     req.on('error', reject);
   });
+}
+
+function hashPassword(password) {
+  return createHash('sha256').update(`lan-room:${password}`).digest();
+}
+
+function passwordsMatch(actual, expected) {
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function localLanRooms() {
@@ -36,7 +45,7 @@ function localLanRooms() {
             let code;
             do { code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (lanRooms.has(code));
             const token = crypto.randomUUID();
-            const room = { code, password, mode: String(body.mode || 'VERSUS').slice(0, 24), players: [{ token, name: String(body.name || 'Jogador 1').slice(0, 24), character: null }], inputs: [{ x: 0, y: 0, running: false, attack: 0, dash: 0 }, { x: 0, y: 0, running: false, attack: 0, dash: 0 }], snapshot: null, started: false, updatedAt: Date.now() };
+            const room = { code, passwordHash: hashPassword(password), mode: String(body.mode || 'VERSUS').slice(0, 24), players: [{ token, name: String(body.name || 'Jogador 1').slice(0, 24), character: null }], inputs: [{ x: 0, y: 0, running: false, attack: 0, dash: 0 }, { x: 0, y: 0, running: false, attack: 0, dash: 0 }], snapshot: null, started: false, updatedAt: Date.now() };
             lanRooms.set(code, room);
             return respond(201, { code, token, slot: 0, room: { code, mode: room.mode, players: room.players.map(({ name, character }) => ({ name, character })), started: false } });
           }
@@ -48,14 +57,17 @@ function localLanRooms() {
           if (req.method === 'POST' && action === 'join') {
             if (room.players.length >= 2) return respond(409, { error: 'A sala já está cheia.' });
             const body = await readJson(req);
-            if (!String(body.password || '').trim() || body.password !== room.password) return respond(403, { error: 'Senha da sala incorreta.' });
+            const providedPassword = String(body.password || '').trim();
+            if (!providedPassword || !passwordsMatch(hashPassword(providedPassword), room.passwordHash)) return respond(403, { error: 'Senha da sala incorreta.' });
             const token = crypto.randomUUID();
             room.players.push({ token, name: String(body.name || 'Jogador 2').slice(0, 24), character: null });
             room.updatedAt = Date.now();
             return respond(200, { code, token, slot: 1, room: { code, mode: room.mode, players: room.players.map(({ name, character }) => ({ name, character })), started: false } });
           }
           const body = action === 'poll' ? null : await readJson(req);
-          const slot = room.players.findIndex((player) => player.token === body?.token || player.token === url.searchParams.get('token'));
+          const authorization = req.headers.authorization || '';
+          const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+          const slot = room.players.findIndex((player) => player.token === bearerToken);
           if (slot < 0) return respond(403, { error: 'Este navegador não pertence a essa sala.' });
           if (req.method === 'GET' && action === 'poll') {
             room.updatedAt = Date.now();
@@ -88,7 +100,12 @@ function localLanRooms() {
           }
           if (req.method === 'POST' && action === 'snapshot') {
             if (slot !== 0) return respond(403, { error: 'Somente o anfitrião publica o estado da partida.' });
-            room.snapshot = body.snapshot;
+            const snapshot = body.snapshot;
+            if (!snapshot || typeof snapshot !== 'object' || !snapshot.player || !snapshot.rival && snapshot.rival !== null) return respond(400, { error: 'Snapshot inválido.' });
+            const finiteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+            if (!finiteNumber(snapshot.player.x) || !finiteNumber(snapshot.player.y) || !finiteNumber(snapshot.player.hp)) return respond(400, { error: 'Snapshot inválido.' });
+            if (snapshot.rival && (!finiteNumber(snapshot.rival.x) || !finiteNumber(snapshot.rival.y) || !finiteNumber(snapshot.rival.hp))) return respond(400, { error: 'Snapshot inválido.' });
+            room.snapshot = snapshot;
             room.updatedAt = Date.now();
             return respond(200, { ok: true });
           }

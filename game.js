@@ -165,8 +165,8 @@ function loadSave() {
 const save = loadSave();
 const rohanProfile = loadRohanProfile();
 function loadGameSettings() {
-  try { return { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '', ...JSON.parse(localStorage.getItem('eternal-destiny-settings-v1')) }; }
-  catch { return { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '' }; }
+  try { return { playerName: 'Jogador Local', ...JSON.parse(localStorage.getItem('eternal-destiny-settings-v1')) }; }
+  catch { return { playerName: 'Jogador Local' }; }
 }
 let gameSettings = loadGameSettings();
 const state = {
@@ -258,7 +258,7 @@ function isFullStoryComplete() {
   return campaigns.every((campaign) => currentCampaignProgress(campaign.id).phase === STORY_PHASES.CAMPAIGN_COMPLETE);
 }
 function hasAllUnlocked() {
-  try { return localStorage.getItem('eternal-destiny-master-unlocked') === 'true'; } catch { return false; }
+  return false;
 }
 function isOverHeaven() { return state.mode === 'final' && state.secretPhase === 2 && state.jotaroAwakened && selectedCharacter().id === 'jotaro'; }
 function availableSkills() { return isOverHeaven() ? selectedCharacter().heavenSkills : selectedCharacter().skills; }
@@ -3207,9 +3207,9 @@ function renderVersusSelection() {
 function startLocalVersus() {
   if (lanMatch) {
     const character = characters[versusSelection.players[lanMatch.slot]];
-    void lanRequest(`/${lanMatch.code}/select`, { token: lanMatch.token, character: character.id }).then(async () => {
+    void lanRequest(`/${lanMatch.code}/select`, { character: character.id }, lanMatch.token).then(async () => {
       if (lanMatch.slot === 0) {
-        await lanRequest(`/${lanMatch.code}/start`, { token: lanMatch.token });
+        await lanRequest(`/${lanMatch.code}/start`, {}, lanMatch.token);
         lanMatch.room.started = true;
         launchLanBattle();
       } else {
@@ -3267,7 +3267,7 @@ $('#versus-roster').addEventListener('click', (event) => {
   renderVersusSelection();
   if (lanMatch) {
     const character = characters[versusSelection.players[slot]];
-    void lanRequest(`/${lanMatch.code}/select`, { token: lanMatch.token, character: character.id })
+    void lanRequest(`/${lanMatch.code}/select`, { character: character.id }, lanMatch.token)
       .then((result) => { lanMatch.room.players = result.players; renderVersusSelection(); })
       .catch((error) => { $('#versus-hint').textContent = error.message; });
   }
@@ -3313,8 +3313,6 @@ function detectDevice() {
 function openSettingsModal() {
   $('#settings-modal').hidden = false;
   $('#settings-player-name').value = gameSettings.playerName || 'Jogador Local';
-  $('#settings-supabase-url').value = gameSettings.supabaseUrl || '';
-  $('#settings-supabase-key').value = gameSettings.supabaseKey || '';
   $('#settings-device').textContent = detectDevice();
   $('#settings-close').focus();
 }
@@ -3325,39 +3323,18 @@ $('#settings-modal').addEventListener('pointerdown', (event) => {
   if (event.target === event.currentTarget) $('#settings-modal').hidden = true;
 });
 $('#settings-save').addEventListener('click', () => {
-  const password = $('#settings-master-password').value.trim();
-  if (password) {
-    if (password === 'JBAED') {
-      localStorage.setItem('eternal-destiny-master-unlocked', 'true');
-      save.story.unlockedCampaignIds = campaigns.map((campaign) => campaign.id);
-      save.story.secretUnlocked = true;
-      save.advanced = characters.map((character) => character.id);
-      save.supreme = characters.map((character) => character.id);
-      save.victories = characters.map((character) => character.id);
-      persistSave();
-      showToast('Senha mestre aceita. Todo o jogo foi desbloqueado.');
-    } else {
-      showToast('Senha mestre inválida.');
-    }
-  }
   gameSettings = {
     playerName: $('#settings-player-name').value.trim() || 'Jogador Local',
-    supabaseUrl: $('#settings-supabase-url').value.trim().replace(/\/$/, ''),
-    supabaseKey: $('#settings-supabase-key').value.trim(),
   };
   rohanProfile.playerName = gameSettings.playerName;
   saveRohanProfile(rohanProfile);
   localStorage.setItem('eternal-destiny-settings-v1', JSON.stringify(gameSettings));
-  $('#settings-master-password').value = '';
   $('#settings-modal').hidden = true;
 });
 $('#settings-reset').addEventListener('click', () => {
   localStorage.removeItem('eternal-destiny-settings-v1');
-  localStorage.removeItem('eternal-destiny-master-unlocked');
-  gameSettings = { playerName: 'Jogador Local', supabaseUrl: '', supabaseKey: '' };
+  gameSettings = { playerName: 'Jogador Local' };
   $('#settings-player-name').value = gameSettings.playerName;
-  $('#settings-supabase-url').value = '';
-  $('#settings-supabase-key').value = '';
   showToast('Configurações locais restauradas.');
 });
 
@@ -3385,19 +3362,24 @@ function launchLanBattle() {
   if (lanMatch.slot === 0) lanSnapshotTimer = setInterval(() => {
     if (state.mode !== 'versus' || !state.localPvp) return;
     const rival = state.enemies.find((enemy) => enemy.playerTwo);
-    void lanRequest(`/${lanMatch.code}/snapshot`, { token: lanMatch.token, snapshot: {
-      player: { x: state.player.x, y: state.player.y, hp: state.player.hp, energy: state.player.energy, facingX: state.player.facingX, facingY: state.player.facingY, isMoving: state.player.isMoving, attackTimer: state.player.attackTimer, hitFlash: state.player.hitFlash },
-      rival: rival && { x: rival.x, y: rival.y, hp: rival.hp, energy: rival.energy, facingX: rival.facingX, facingY: rival.facingY, isMoving: rival.isMoving, attackTimer: rival.attackTimer, hitFlash: rival.hitFlash },
-      fightActive: state.fightActive,
-    } }).catch(() => {});
+    void lanRequest(`/${lanMatch.code}/snapshot`, {
+      snapshot: {
+        player: { x: state.player.x, y: state.player.y, hp: state.player.hp, energy: state.player.energy, facingX: state.player.facingX, facingY: state.player.facingY, isMoving: state.player.isMoving, attackTimer: state.player.attackTimer, hitFlash: state.player.hitFlash },
+        rival: rival && { x: rival.x, y: rival.y, hp: rival.hp, energy: rival.energy, facingX: rival.facingX, facingY: rival.facingY, isMoving: rival.isMoving, attackTimer: rival.attackTimer, hitFlash: rival.hitFlash },
+        fightActive: state.fightActive,
+      },
+    }, lanMatch.token).catch(() => {});
   }, 80);
   updateInterface(true);
 }
 
-async function lanRequest(path, body) {
+async function lanRequest(path, body, token) {
+  const headers = { 'Accept': 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`/__lan/rooms${path}`, {
     method: body ? 'POST' : 'GET',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const responseText = await response.text();
@@ -3419,18 +3401,20 @@ function trackLanRoom(result) {
   lanInputTimer = setInterval(() => {
     if (!lanMatch || lanMatch.slot !== 1) return;
     const keys = state.keys;
-    void lanRequest(`/${lanMatch.code}/input`, { token: lanMatch.token, input: {
-      x: Number(keys.has('arrowright')) - Number(keys.has('arrowleft')),
-      y: Number(keys.has('arrowdown')) - Number(keys.has('arrowup')),
-      running: keys.has('shiftright'),
-      attack: lanActionCounts.attack,
-      dash: lanActionCounts.dash,
-    } }).catch(() => {});
+    void lanRequest(`/${lanMatch.code}/input`, {
+      input: {
+        x: Number(keys.has('arrowright')) - Number(keys.has('arrowleft')),
+        y: Number(keys.has('arrowdown')) - Number(keys.has('arrowup')),
+        running: keys.has('shiftright'),
+        attack: lanActionCounts.attack,
+        dash: lanActionCounts.dash,
+      },
+    }, lanMatch.token).catch(() => {});
   }, 50);
   lanPollTimer = setInterval(async () => {
     if (!lanMatch) return;
     try {
-      lanMatch.room = await lanRequest(`/${lanMatch.code}/poll?token=${encodeURIComponent(lanMatch.token)}`);
+      lanMatch.room = await lanRequest(`/${lanMatch.code}/poll`, null, lanMatch.token);
       lanMatch.room.players.forEach((player, slot) => {
         const index = characters.findIndex((character) => character.id === player.character);
         if (index >= 0) versusSelection.players[slot] = index;

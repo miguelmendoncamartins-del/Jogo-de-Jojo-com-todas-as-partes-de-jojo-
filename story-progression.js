@@ -61,6 +61,7 @@ export function normalizeSave(raw, campaigns) {
   const saved = raw && typeof raw === 'object' ? raw : {};
   const previousStory = saved.story && typeof saved.story === 'object' ? saved.story : {};
   const progressByCampaign = {};
+  const campaignIds = new Set(campaigns.map((campaign) => campaign.id));
 
   for (const campaign of campaigns) {
     const previous = previousStory.campaigns?.[campaign.id] || {};
@@ -88,9 +89,9 @@ export function normalizeSave(raw, campaigns) {
   const unlocked = unlockedCampaignIds.filter((id) => campaigns.some((campaign) => campaign.id === id));
 
   return {
-    advanced: uniqueStrings(saved.advanced),
-    supreme: uniqueStrings(saved.supreme),
-    victories: uniqueStrings(saved.victories),
+    advanced: uniqueStrings(saved.advanced).filter((id) => campaignIds.has(id)),
+    supreme: uniqueStrings(saved.supreme).filter((id) => campaignIds.has(id)),
+    victories: uniqueStrings(saved.victories).filter((id) => campaignIds.has(id)),
     story: {
       unlockedCampaignIds: unlocked,
       secretUnlocked: previousStory.secretUnlocked === true,
