@@ -29,6 +29,12 @@ O workflow `.github/workflows/deploy.yml` executa `actions/configure-pages`, rod
 - No Versus local, escolha um personagem para cada jogador: P1 usa `WASD`, `J`, `Q` e `Shift`; P2 usa as setas, `Enter`, `Numpad 0` (ou `Ctrl` direito) e `Shift` direito.
 - Em telas sensíveis ao toque, o joystick controla o movimento; **CORRER** e **DASH** ficam ao lado dele.
 
+### Salas na rede local
+
+O modo de salas usa o servidor de desenvolvimento do Vite, sem Supabase. Inicie o jogo no computador anfitrião com `npm install` e `npm run dev`. Os dois computadores precisam estar conectados à mesma rede Wi‑Fi. No segundo computador, abra no navegador o endereço de rede mostrado pelo Vite (use o endereço IPv4 do anfitrião com a porta `5173`, por exemplo `http://192.168.1.20:5173`), escolha **Modo Online → Modo Versus** e digite o código da sala. O anfitrião cria a sala e compartilha o código.
+
+As salas e as escolhas ficam na memória do servidor e desaparecem quando ele é reiniciado. Por enquanto, criação/entrada de sala e seleção compartilhada dos protagonistas estão implementadas; o combate ainda não sincroniza movimentos, golpes ou vida entre os computadores.
+
 ### Progressão
 
 As campanhas de Jonathan, Joseph, Jotaro, Josuke, Giorno, Jolyne, Johnny, Gappy e Jodio são definidas em `campaigns.js`. As fases têm objetivos investigáveis, oponentes, paletas e obstáculos próprios, diálogos de entrada/encontro/vitória, rotas, consequências e recompensas. A campanha de Josuke inclui Kosaku Kawajiri antes do confronto final com Yoshikage Kira. O progresso percorre `INTRO`, exploração, objetivo, encontro, combate, pós-batalha, mudança ambiental e desbloqueio; objetivos e vitórias fora da fase atual não avançam a história.

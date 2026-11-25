@@ -174,6 +174,7 @@ const state = {
   selected: 0,
   mode: 'campaign',
   localPvp: false,
+  networkMirror: false,
   versusOpponentIndex: 1,
   fightActive: true,
   secretPhase: 0,
@@ -952,10 +953,11 @@ function syncActorFromPhysics(actor) {
   actor.lastValidY = y;
 }
 
-function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } = {}) {
+function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1, trainingEnemy = 'rohan', aiLevel = 3, trainingBehavior = 'balanced' } = {}) {
   dioHurtSfxCount = 0;
   state.mode = mode;
   state.localPvp = mode === 'versus' && localPvp;
+  state.networkMirror = false;
   state.versusOpponentIndex = opponentIndex;
   state.secretPhase = 0;
   state.secretRunPhase = null;
@@ -1024,23 +1026,32 @@ function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1 } 
       attachPhysicsBodies();
       $('#battle-message').textContent = 'VERSUS LOCAL · P1: WASD/J/Q/SHIFT · P2: SETAS/ENTER/NUM 0/SHIFT DIREITO';
     } else {
-    const rohanSpriteAsset = resolveSpriteAsset('antagonist', 'Rohan Kishibe', 'Rohan');
+    const trainingOpponent = mode === 'training' && trainingEnemy !== 'rohan'
+      ? characters.find((character) => character.id === trainingEnemy)
+      : null;
+    const rohanSpriteAsset = trainingOpponent?.spriteAsset || resolveSpriteAsset('antagonist', 'Rohan Kishibe', 'Rohan');
+    const trainingDifficulty = Math.max(1, Math.min(5, Number(aiLevel) || 3));
+    const behaviorProfile = {
+      aggressive: { damage: 2, interval: -0.25, speed: 14, range: 20 },
+      defensive: { damage: -1, interval: 0.35, speed: -10, range: -20 },
+      balanced: { damage: 0, interval: 0, speed: 0, range: 0 },
+    }[trainingBehavior] || { damage: 0, interval: 0, speed: 0, range: 0 };
     state.enemies = [{
-      id: 'rohan',
-      name: 'ROHAN KISHIBE',
+      id: trainingOpponent?.id || 'rohan',
+      name: (trainingOpponent?.name || 'ROHAN KISHIBE').toUpperCase(),
       x: 720,
       y: 245,
       hp: mode === 'training' ? 500 : 520,
       maxHp: mode === 'training' ? 500 : 520,
       energy: 100,
       maxEnergy: 100,
-      color: '#94a8cf',
+      color: trainingOpponent?.color || '#94a8cf',
       size: 1.08,
-      pattern: 'ranged',
-      attackRange: 230,
-      attackDamage: mode === 'training' ? 7 : 10,
-      attackInterval: 1.28,
-      approachSpeed: 58,
+      pattern: trainingOpponent ? 'duelist' : 'ranged',
+      attackRange: 230 + behaviorProfile.range,
+      attackDamage: mode === 'training' ? 4 + trainingDifficulty * 2 + behaviorProfile.damage : 10,
+      attackInterval: mode === 'training' ? 2.3 - trainingDifficulty * 0.25 + behaviorProfile.interval : 1.28,
+      approachSpeed: mode === 'training' ? 34 + trainingDifficulty * 9 + behaviorProfile.speed : 58,
       stun: 0,
       status: null,
       statuses: { freeze: 0, slow: 0, confuse: 0, burn: 0 },
@@ -1639,6 +1650,7 @@ function requestAssist() {
 
 function update(dt, timestamp) {
   if (state.paused) return;
+  if (state.networkMirror) return;
   state.elapsed += dt;
   state.attackCooldown = Math.max(0, state.attackCooldown - dt);
   state.invulnerable = Math.max(0, state.invulnerable - dt);
@@ -2915,6 +2927,8 @@ function handleKeyDown(event) {
   }
   state.keys.add(keyId);
   if (state.localPvp) {
+    if (lanMatch?.slot === 1 && !event.repeat && isP2Attack) lanActionCounts.attack += 1;
+    if (lanMatch?.slot === 1 && !event.repeat && isP2Dash) lanActionCounts.dash += 1;
     if (!event.repeat && (key === 'j' || key === ' ')) performBasicAttack();
     if (!event.repeat && isP2Attack) performPvpAttack(state.enemies.find((enemy) => enemy.playerTwo), state.player);
     if (!event.repeat && key === 'q') startDash(state.player);
@@ -3069,7 +3083,9 @@ function renderRohanChronicles() {
 
 function openModesModal() {
   const modal = $('#modes-modal');
+  choosingOnlineMode = false;
   modal.hidden = false;
+  modal.style.display = 'grid';
   renderRohanChronicles();
   $('#rohan-chronicles').hidden = true;
   $('#modes-close').focus();
@@ -3081,7 +3097,7 @@ function startTitleFlow() {
   const title = $('#title-screen');
   if (title) title.hidden = true;
   gameStarted = true;
-  openModesModal();
+  openHistorySelection();
   void requestGameFullscreen();
 }
 
@@ -3092,12 +3108,18 @@ function beginGameFromMenu() {
 
 function closeModesModal() {
   $('#modes-modal').hidden = true;
+  $('#modes-modal').style.display = 'none';
   if (gameStarted) {
-    $('#modes-button').focus();
+    $('#pause-button')?.focus();
   } else {
     $('#title-screen').hidden = false;
     $('#title-start').focus();
   }
+}
+
+function closeMatchModal() {
+  $('#match-modal').hidden = true;
+  choosingOnlineMode = false;
 }
 
 let historySelectedCharacter = state.selected;
@@ -3147,7 +3169,11 @@ function openHistorySelection() {
 function openVersusSelection() {
   const unlockedIndices = characters.map((character, index) => hasCampaignAccess(character.id) ? index : -1).filter((index) => index >= 0);
   versusSelection.players = [unlockedIndices.includes(state.selected) ? state.selected : unlockedIndices[0], unlockedIndices.find((index) => index !== (unlockedIndices.includes(state.selected) ? state.selected : unlockedIndices[0])) || 0];
-  versusSelection.activePlayer = 0;
+  if (lanMatch?.room?.players) lanMatch.room.players.forEach((player, slot) => {
+    const index = characters.findIndex((character) => character.id === player.character);
+    if (index >= 0) versusSelection.players[slot] = index;
+  });
+  versusSelection.activePlayer = lanMatch ? lanMatch.slot : 0;
   $('#modes-modal').hidden = true;
   $('#versus-select').hidden = false;
   renderVersusSelection();
@@ -3173,10 +3199,25 @@ function renderVersusSelection() {
   if (rohanProfile.rohanUnlocked) unlockedVillains.push('Rohan Kishibe');
   const villainCards = [...new Set(unlockedVillains)].map((name) => `<div class="versus-character villain-unlocked" style="--fighter-color:#94a8cf"><strong>VILÃO DESBLOQUEADO</strong><small>${name.toUpperCase()}</small></div>`).join('');
   $('#versus-roster').innerHTML = characterCards + villainCards;
-  $('#versus-hint').textContent = `PLAYER ${versusSelection.activePlayer + 1}: escolha um personagem. Clique no cartão do jogador para alternar.`;
+  $('#versus-hint').textContent = lanMatch
+    ? `SALA ${lanMatch.code} · VOCÊ É PLAYER ${lanMatch.slot + 1}. Escolha seu personagem e aguarde o anfitrião.`
+    : `PLAYER ${versusSelection.activePlayer + 1}: escolha um personagem. Clique no cartão do jogador para alternar.`;
 }
 
 function startLocalVersus() {
+  if (lanMatch) {
+    const character = characters[versusSelection.players[lanMatch.slot]];
+    void lanRequest(`/${lanMatch.code}/select`, { token: lanMatch.token, character: character.id }).then(async () => {
+      if (lanMatch.slot === 0) {
+        await lanRequest(`/${lanMatch.code}/start`, { token: lanMatch.token });
+        lanMatch.room.started = true;
+        launchLanBattle();
+      } else {
+        $('#versus-hint').textContent = 'Personagem enviado. Aguarde o anfitrião iniciar a sala.';
+      }
+    }).catch((error) => { $('#versus-hint').textContent = error.message; });
+    return;
+  }
   state.selected = versusSelection.players[0];
   $('#versus-select').hidden = true;
   gameStarted = true;
@@ -3185,6 +3226,13 @@ function startLocalVersus() {
 }
 
 function returnSelectionToModes(selectionId) {
+  if (selectionId === '#versus-select' && lanMatch) {
+    if (lanPollTimer) clearInterval(lanPollTimer);
+    if (lanInputTimer) clearInterval(lanInputTimer);
+    if (lanSnapshotTimer) clearInterval(lanSnapshotTimer);
+    lanMatch = null;
+  }
+  choosingOnlineMode = false;
   $(selectionId).hidden = true;
   openModesModal();
 }
@@ -3208,19 +3256,25 @@ $('#history-start').addEventListener('click', () => {
   resetBattle('campaign');
 });
 $('#history-back').addEventListener('click', () => returnSelectionToModes('#history-select'));
-$('#versus-player-one').addEventListener('click', () => { versusSelection.activePlayer = 0; renderVersusSelection(); });
-$('#versus-player-two').addEventListener('click', () => { versusSelection.activePlayer = 1; renderVersusSelection(); });
+$('#versus-player-one').addEventListener('click', () => { if (!lanMatch) { versusSelection.activePlayer = 0; renderVersusSelection(); } });
+$('#versus-player-two').addEventListener('click', () => { if (!lanMatch) { versusSelection.activePlayer = 1; renderVersusSelection(); } });
 $('#versus-roster').addEventListener('click', (event) => {
   const card = event.target.closest('[data-versus-character]');
   if (!card) return;
-  versusSelection.players[versusSelection.activePlayer] = Number(card.dataset.versusCharacter);
+  const slot = lanMatch ? lanMatch.slot : versusSelection.activePlayer;
+  versusSelection.players[slot] = Number(card.dataset.versusCharacter);
   versusSelection.activePlayer = 1 - versusSelection.activePlayer;
   renderVersusSelection();
+  if (lanMatch) {
+    const character = characters[versusSelection.players[slot]];
+    void lanRequest(`/${lanMatch.code}/select`, { token: lanMatch.token, character: character.id })
+      .then((result) => { lanMatch.room.players = result.players; renderVersusSelection(); })
+      .catch((error) => { $('#versus-hint').textContent = error.message; });
+  }
 });
 $('#versus-start').addEventListener('click', startLocalVersus);
 $('#versus-back').addEventListener('click', () => returnSelectionToModes('#versus-select'));
 
-$('#modes-button').addEventListener('click', openModesModal);
 $('#modes-close').addEventListener('click', closeModesModal);
 $('#title-start')?.addEventListener('click', (event) => {
   event.preventDefault();
@@ -3273,7 +3327,7 @@ $('#settings-modal').addEventListener('pointerdown', (event) => {
 $('#settings-save').addEventListener('click', () => {
   const password = $('#settings-master-password').value.trim();
   if (password) {
-    if (password === 'JOJO-ALL-4-DESTINY') {
+    if (password === 'JBAED') {
       localStorage.setItem('eternal-destiny-master-unlocked', 'true');
       save.story.unlockedCampaignIds = campaigns.map((campaign) => campaign.id);
       save.story.secretUnlocked = true;
@@ -3307,73 +3361,169 @@ $('#settings-reset').addEventListener('click', () => {
   showToast('Configurações locais restauradas.');
 });
 
-let matchChannel = null;
 let activeMatchMode = 'RANQUEADA';
+let lanMatch = null;
+let lanPollTimer = null;
+let choosingOnlineMode = false;
+let lanInputTimer = null;
+let lanSnapshotTimer = null;
+let lanRemoteActions = { attack: 0, dash: 0 };
+let lanActionCounts = { attack: 0, dash: 0 };
 
-function makeMatchCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+function launchLanBattle() {
+  if (!lanMatch?.room?.started || state.mode === 'versus' && gameStarted && $('#versus-select').hidden) return;
+  const first = characters.findIndex((character) => character.id === lanMatch.room.players[0]?.character);
+  const second = characters.findIndex((character) => character.id === lanMatch.room.players[1]?.character);
+  if (first < 0 || second < 0) return;
+  state.selected = first;
+  $('#versus-select').hidden = true;
+  gameStarted = true;
+  resetBattle('versus', { localPvp: true, opponentIndex: second });
+  state.networkMirror = lanMatch.slot === 1;
+  lanRemoteActions = { attack: 0, dash: 0 };
+  if (lanSnapshotTimer) clearInterval(lanSnapshotTimer);
+  if (lanMatch.slot === 0) lanSnapshotTimer = setInterval(() => {
+    if (state.mode !== 'versus' || !state.localPvp) return;
+    const rival = state.enemies.find((enemy) => enemy.playerTwo);
+    void lanRequest(`/${lanMatch.code}/snapshot`, { token: lanMatch.token, snapshot: {
+      player: { x: state.player.x, y: state.player.y, hp: state.player.hp, energy: state.player.energy, facingX: state.player.facingX, facingY: state.player.facingY, isMoving: state.player.isMoving, attackTimer: state.player.attackTimer, hitFlash: state.player.hitFlash },
+      rival: rival && { x: rival.x, y: rival.y, hp: rival.hp, energy: rival.energy, facingX: rival.facingX, facingY: rival.facingY, isMoving: rival.isMoving, attackTimer: rival.attackTimer, hitFlash: rival.hitFlash },
+      fightActive: state.fightActive,
+    } }).catch(() => {});
+  }, 80);
+  updateInterface(true);
+}
+
+async function lanRequest(path, body) {
+  const response = await fetch(`/__lan/rooms${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const responseText = await response.text();
+  let result;
+  try { result = JSON.parse(responseText); }
+  catch {
+    throw new Error('O serviço de salas online não está disponível nesta hospedagem. Digite o código/senha de uma sala ativa ou inicie o jogo pelo servidor local.');
+  }
+  if (!response.ok) throw new Error(result.error || 'Erro no servidor local.');
+  return result;
+}
+
+function trackLanRoom(result) {
+  lanMatch = { code: result.code, token: result.token, slot: result.slot, room: result.room };
+  lanActionCounts = { attack: 0, dash: 0 };
+  $('#match-code').value = result.code;
+  if (lanPollTimer) clearInterval(lanPollTimer);
+  if (lanInputTimer) clearInterval(lanInputTimer);
+  lanInputTimer = setInterval(() => {
+    if (!lanMatch || lanMatch.slot !== 1) return;
+    const keys = state.keys;
+    void lanRequest(`/${lanMatch.code}/input`, { token: lanMatch.token, input: {
+      x: Number(keys.has('arrowright')) - Number(keys.has('arrowleft')),
+      y: Number(keys.has('arrowdown')) - Number(keys.has('arrowup')),
+      running: keys.has('shiftright'),
+      attack: lanActionCounts.attack,
+      dash: lanActionCounts.dash,
+    } }).catch(() => {});
+  }, 50);
+  lanPollTimer = setInterval(async () => {
+    if (!lanMatch) return;
+    try {
+      lanMatch.room = await lanRequest(`/${lanMatch.code}/poll?token=${encodeURIComponent(lanMatch.token)}`);
+      lanMatch.room.players.forEach((player, slot) => {
+        const index = characters.findIndex((character) => character.id === player.character);
+        if (index >= 0) versusSelection.players[slot] = index;
+      });
+      if (!$('#versus-select').hidden) renderVersusSelection();
+      if (lanMatch.slot === 0 && state.mode === 'versus' && state.localPvp) {
+        const remote = lanMatch.room.inputs?.[1];
+        if (remote) {
+          for (const [key, active] of [['arrowleft', remote.x < 0], ['arrowright', remote.x > 0], ['arrowup', remote.y < 0], ['arrowdown', remote.y > 0], ['shiftright', remote.running]]) {
+            if (active) state.keys.add(key); else state.keys.delete(key);
+          }
+          if (remote.attack > lanRemoteActions.attack) {
+            lanRemoteActions.attack = remote.attack;
+            performPvpAttack(state.enemies.find((enemy) => enemy.playerTwo), state.player);
+          }
+          if (remote.dash > lanRemoteActions.dash) {
+            lanRemoteActions.dash = remote.dash;
+            startDash(state.enemies.find((enemy) => enemy.playerTwo), true);
+          }
+        }
+      } else if (lanMatch.slot === 1 && lanMatch.room.snapshot && state.networkMirror) {
+        applyLanSnapshot(lanMatch.room.snapshot);
+      }
+      if (lanMatch.room.started) launchLanBattle();
+      if (lanMatch.room.players.length < 2) $('#versus-hint').textContent = `SALA ${lanMatch.code} · aguardando o segundo jogador entrar.`;
+      else if (lanMatch.room.players.every((player) => player.character)) $('#versus-hint').textContent = 'Os dois jogadores escolheram seus personagens.';
+    } catch (error) {
+      $('#versus-hint').textContent = error.message;
+    }
+  }, 100);
+}
+
+function applyLanSnapshot(snapshot) {
+  const apply = (actor, data) => {
+    if (!actor || !data) return;
+    Object.assign(actor, data);
+    actor.physicsZone?.setPosition(data.x, data.y);
+    actor.body?.reset(data.x, data.y);
+    actor.body?.setVelocity(0, 0);
+  };
+  apply(state.player, snapshot.player);
+  apply(state.enemies.find((enemy) => enemy.playerTwo), snapshot.rival);
+  state.fightActive = snapshot.fightActive;
+  if (!snapshot.fightActive) {
+    const playerWon = snapshot.rival?.hp <= 0;
+    $('#battle-message').textContent = playerWon ? 'PLAYER 1 VENCEU A BATALHA!' : 'PLAYER 2 VENCEU A BATALHA!';
+    $('#fight-title').textContent = playerWon ? 'VITÓRIA · PLAYER 1' : 'VITÓRIA · PLAYER 2';
+  }
+  updateInterface();
 }
 
 function openMatchModal(mode) {
   activeMatchMode = mode;
   $('#match-mode-label').textContent = mode;
   $('#match-code').value = '';
-  $('#match-status').textContent = gameSettings.supabaseUrl && gameSettings.supabaseKey
-    ? 'Supabase conectado. Crie ou entre em uma sala.'
-    : 'Modo local de rede. Todos na mesma janela podem compartilhar o código.';
+  $('#match-password').value = '';
+  $('#match-status').textContent = 'A pessoa anfitriã inicia o jogo neste computador e compartilha o endereço local. Ambos precisam estar na mesma rede Wi‑Fi.';
   $('#match-modal').hidden = false;
   $('#match-code').focus();
 }
 
-async function supabaseRoomRequest(path, options = {}) {
-  if (!gameSettings.supabaseUrl || !gameSettings.supabaseKey) throw new Error('Supabase não configurado.');
-  const response = await fetch(`${gameSettings.supabaseUrl}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      apikey: gameSettings.supabaseKey,
-      Authorization: `Bearer ${gameSettings.supabaseKey}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  if (!response.ok) throw new Error(`Supabase: ${await response.text()}`);
-  return response.status === 204 ? null : response.json();
-}
-
-$('#match-close').addEventListener('click', () => { $('#match-modal').hidden = true; });
+$('#match-close').addEventListener('click', closeMatchModal);
+$('#match-modal').addEventListener('pointerdown', (event) => { if (event.target === event.currentTarget) closeMatchModal(); });
 $('#match-create').addEventListener('click', async () => {
-  const code = makeMatchCode();
-  $('#match-code').value = code;
+  const password = $('#match-password').value.trim();
+  if (!password) {
+    $('#match-status').textContent = 'Defina uma senha para criar a sala online.';
+    return;
+  }
   try {
-    if (gameSettings.supabaseUrl && gameSettings.supabaseKey) {
-      await supabaseRoomRequest('match_rooms', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify([{ code, mode: activeMatchMode, status: 'waiting', host: gameSettings.playerName, payload: { rounds: 3, seconds: 180 } }]),
-      });
-    } else {
-      matchChannel = new BroadcastChannel(`eternal-destiny-${code}`);
-      matchChannel.postMessage({ type: 'room-created', code, mode: activeMatchMode, player: gameSettings.playerName });
-    }
-    $('#match-status').textContent = `Sala criada: ${code}. Compartilhe este código via Wi-Fi.`;
+    const room = await lanRequest('', { name: gameSettings.playerName, mode: activeMatchMode, password });
+    trackLanRoom(room);
+    $('#match-status').textContent = `Sala ${room.code} criada. O outro jogador deve abrir o endereço local deste computador e digitar o código.`;
+    $('#match-modal').hidden = true;
+    openVersusSelection();
   } catch (error) {
     $('#match-status').textContent = error.message;
   }
 });
 $('#match-join').addEventListener('click', async () => {
   const code = $('#match-code').value.trim().toUpperCase();
+  const password = $('#match-password').value.trim();
+  if (!password) {
+    $('#match-status').textContent = 'Informe a senha da sala.';
+    return;
+  }
   if (!/^[A-Z0-9]{6}$/.test(code)) {
     $('#match-status').textContent = 'Informe um código válido da sala.';
     return;
   }
   try {
-    if (gameSettings.supabaseUrl && gameSettings.supabaseKey) {
-      const rooms = await supabaseRoomRequest(`match_rooms?code=eq.${encodeURIComponent(code)}&select=*`);
-      if (!rooms?.length) throw new Error('Sala não encontrada no Supabase.');
-    } else {
-      matchChannel = new BroadcastChannel(`eternal-destiny-${code}`);
-    }
+    const room = await lanRequest(`/${encodeURIComponent(code)}/join`, { name: gameSettings.playerName, password });
+    trackLanRoom(room);
     $('#match-modal').hidden = true;
     openVersusSelection();
   } catch (error) {
@@ -3381,7 +3531,7 @@ $('#match-join').addEventListener('click', async () => {
   }
 });
 
-$('#modes-grid').innerHTML = ROHAN_MODES.filter((mode) => ['arcade', 'online', 'training', 'chronicles'].includes(mode.id)).map((mode) =>
+$('#modes-grid').innerHTML = ROHAN_MODES.filter((mode) => ['story', 'versus', 'arcade', 'online', 'training', 'chronicles'].includes(mode.id)).map((mode) =>
   `<button class="mode-card" type="button" data-rohan-mode="${mode.id}">
     <strong>${mode.title}</strong>
     <p>${mode.description}</p>
@@ -3394,16 +3544,22 @@ $('#modes-grid').addEventListener('click', (event) => {
   if (!card) return;
   const mode = card.dataset.rohanMode;
   if (mode === 'story') {
+    choosingOnlineMode = false;
     openHistorySelection();
   } else if (mode === 'versus') {
-    openVersusSelection();
+    if (choosingOnlineMode) {
+      openMatchModal('VERSUS');
+    } else openVersusSelection();
   } else if (mode === 'training') {
-    beginGameFromMenu();
-    resetBattle('training');
+    $('#training-enemy').innerHTML = '<option value="rohan">Rohan Kishibe</option>' + characters.map((character) => `<option value="${character.id}">${character.name}</option>`).join('');
+    $('#training-modal').hidden = false;
+    $('#training-ai').value = '3';
+    $('#training-ai-value').textContent = '3';
   } else if (mode === 'chronicles') {
     renderRohanChronicles();
-    $('#rohan-chronicles').hidden = false;
-    $('#rohan-chronicles').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const panel = $('#rohan-chronicles');
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } else if (mode === 'party') {
     beginGameFromMenu();
     resetBattle('party');
@@ -3423,26 +3579,36 @@ $('#modes-grid').addEventListener('click', (event) => {
   } else if (mode === 'race') {
     beginGameFromMenu();
     resetBattle('race');
-  } else if (mode === 'training') {
-    beginGameFromMenu();
-    resetBattle('training');
   } else if (mode === 'arcade') {
-    $('#modes-grid').innerHTML = ['ranked', 'tournament', 'party', 'beat-em-up', 'training', 'stealth', 'tower-defense', 'race'].map((id) => {
+    $('#modes-grid').innerHTML = ['party', 'beat-em-up', 'training', 'stealth', 'tower-defense', 'race'].map((id) => {
       const submode = ROHAN_MODES.find((entry) => entry.id === id);
       return `<button class="mode-card" type="button" data-rohan-mode="${submode.id}"><strong>${submode.title}</strong><p>${submode.description}</p><span class="mode-status">ARCADE</span></button>`;
     }).join('') + '<button class="mode-card" type="button" data-rohan-mode="back"><strong>VOLTAR</strong><p>Retornar aos modos principais.</p><span class="mode-status">MENU</span></button>';
   } else if (mode === 'online') {
-    $('#modes-grid').innerHTML = ['versus', 'ranked', 'tournament', 'challenges', 'party'].map((id) => {
+    choosingOnlineMode = true;
+    $('#modes-grid').innerHTML = ['versus'].map((id) => {
       const submode = ROHAN_MODES.find((entry) => entry.id === id);
       return `<button class="mode-card" type="button" data-rohan-mode="${submode.id}"><strong>${submode.title}</strong><p>${submode.description}</p><span class="mode-status">${submode.status}</span></button>`;
     }).join('') + '<button class="mode-card" type="button" data-rohan-mode="back"><strong>VOLTAR</strong><p>Retornar aos modos principais.</p><span class="mode-status">MENU</span></button>';
   } else if (mode === 'back') {
-    $('#modes-grid').innerHTML = ROHAN_MODES.filter((entry) => ['arcade', 'online', 'training', 'chronicles'].includes(entry.id)).map((entry) => `<button class="mode-card" type="button" data-rohan-mode="${entry.id}"><strong>${entry.title}</strong><p>${entry.description}</p><span class="mode-status">${entry.status}</span></button>`).join('');
+    $('#modes-grid').innerHTML = ROHAN_MODES.filter((entry) => ['story', 'versus', 'arcade', 'online', 'training', 'chronicles'].includes(entry.id)).map((entry) => `<button class="mode-card" type="button" data-rohan-mode="${entry.id}"><strong>${entry.title}</strong><p>${entry.description}</p><span class="mode-status">${entry.status}</span></button>`).join('');
   } else if (mode === 'challenges') {
-    showToast('Desafios multiplayer aguardam integração de servidor.');
+    openMatchModal('DESAFIOS');
   } else {
     showToast('Este modo está preparado para integração futura e não usa dados fictícios online.');
   }
+});
+
+$('#training-ai').addEventListener('input', () => { $('#training-ai-value').textContent = $('#training-ai').value; });
+$('#training-close').addEventListener('click', () => { $('#training-modal').hidden = true; });
+$('#training-modal').addEventListener('pointerdown', (event) => { if (event.target === event.currentTarget) $('#training-modal').hidden = true; });
+$('#training-start').addEventListener('click', () => {
+  const enemy = $('#training-enemy').value;
+  const behavior = $('#training-behavior').value;
+  const aiLevel = Number($('#training-ai').value);
+  $('#training-modal').hidden = true;
+  beginGameFromMenu();
+  resetBattle('training', { trainingEnemy: enemy, aiLevel, trainingBehavior: behavior });
 });
 
 class BattleScene extends Phaser.Scene {

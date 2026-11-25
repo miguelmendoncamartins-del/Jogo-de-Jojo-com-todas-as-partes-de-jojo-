@@ -100,11 +100,12 @@
       <aside class="match-modal" id="match-modal" role="dialog" aria-modal="true" aria-labelledby="match-title" hidden>
         <div class="match-panel">
           <header class="match-header"><div><span class="eyebrow">MULTIPLAYER</span><h2 id="match-title">SALA COMPETITIVA</h2></div><button id="match-close" type="button" aria-label="Fechar">×</button></header>
-          <div class="match-status" id="match-status">Crie uma sala ou informe um código da rede.</div>
-          <label class="settings-row"><span>Código da sala</span><input id="match-code" type="text" maxlength="8" value="" placeholder="Ex: JOJO7K"></label>
+          <div class="match-status" id="match-status">A pessoa que hospeda deve abrir o jogo na rede Wi‑Fi. A outra entra pelo endereço desse computador e informa o código da sala.</div>
+          <label class="settings-row"><span>Código da sala</span><input id="match-code" type="text" maxlength="6" value="" placeholder="Ex: JOJO7K"></label>
+          <label class="settings-row"><span>Senha da sala</span><input id="match-password" type="password" maxlength="24" value="" placeholder="Informe uma senha" autocomplete="off"></label>
           <div class="match-mode"><span>MODO</span><strong id="match-mode-label">RANQUEADA</strong></div>
           <div class="match-rules"><span>3 ROUNDS</span><b>180 SEGUNDOS</b></div>
-          <div class="settings-actions"><button id="match-create" type="button">CRIAR CÓDIGO WIFI</button><button id="match-join" type="button">ENTRAR NA SALA</button></div>
+          <div class="settings-actions"><button id="match-create" type="button">CRIAR SALA NA REDE</button><button id="match-join" type="button">ENTRAR NA SALA</button></div>
         </div>
       </aside>
       <aside class="modes-modal" id="modes-modal" role="dialog" aria-modal="true" aria-labelledby="modes-title" hidden>
@@ -114,8 +115,24 @@
             <button id="modes-close" class="modes-close" type="button" aria-label="Voltar">×</button>
           </header>
           <div class="menu-intro"><span>UMA JORNADA. NOVE PARTES. DESTINOS INFINITOS.</span><p>Escolha um modo para entrar na batalha.</p></div>
-          <div class="modes-grid" id="modes-grid"></div>
+          <div class="modes-grid" id="modes-grid">
+            <button class="mode-card" type="button" data-rohan-mode="story"><strong>Modo História</strong><p>Campanhas das nove partes e progressão original.</p><span class="mode-status">DISPONÍVEL</span></button>
+            <button class="mode-card" type="button" data-rohan-mode="versus"><strong>Modo Versus</strong><p>Confronto local com personagens desbloqueados.</p><span class="mode-status">DISPONÍVEL</span></button>
+            <button class="mode-card" type="button" data-rohan-mode="arcade"><strong>Modo Arcade</strong><p>Desafios e modos locais.</p><span class="mode-status">MENU LOCAL</span></button>
+            <button class="mode-card" type="button" data-rohan-mode="online"><strong>Modo Online</strong><p>Versus protegido por código e senha da sala.</p><span class="mode-status">SERVIDOR NECESSÁRIO</span></button>
+            <button class="mode-card" type="button" data-rohan-mode="training"><strong>Estúdio do Rohan</strong><p>Escolha o inimigo e ajuste a inteligência da IA.</p><span class="mode-status">DISPONÍVEL</span></button>
+            <button class="mode-card" type="button" data-rohan-mode="chronicles"><strong>Crônicas do Rohan</strong><p>Histórico local, perfil e temporadas do jogador.</p><span class="mode-status">LOCAL</span></button>
+          </div>
           <section class="rohan-chronicles" id="rohan-chronicles" aria-label="Crônicas locais do Rohan"></section>
+        </div>
+      </aside>
+      <aside class="match-modal" id="training-modal" role="dialog" aria-modal="true" aria-labelledby="training-title" hidden>
+        <div class="match-panel">
+          <header class="match-header"><div><span class="eyebrow">ESTÚDIO DO ROHAN</span><h2 id="training-title">CONFIGURAR TREINO</h2></div><button id="training-close" type="button" aria-label="Fechar">×</button></header>
+          <label class="settings-row"><span>Inimigo</span><select id="training-enemy"><option value="rohan">Rohan Kishibe</option></select></label>
+          <label class="settings-row"><span>Estado do inimigo</span><select id="training-behavior"><option value="balanced">Equilibrado</option><option value="aggressive">Agressivo</option><option value="defensive">Defensivo</option></select></label>
+          <label class="settings-row"><span>Inteligência da IA: <b id="training-ai-value">3</b> / 5</span><input id="training-ai" type="range" min="1" max="5" value="3"></label>
+          <div class="settings-actions"><button id="training-start" type="button">COMEÇAR TREINO</button></div>
         </div>
       </aside>
       <section class="selection-screen history-select-screen" id="history-select" aria-label="Seleção de campanha" hidden>
@@ -166,18 +183,6 @@
       <div class="unlock-banner" id="unlock-banner" aria-live="assertive"><span class="unlock-eyebrow">NOVO PODER DESBLOQUEADO!</span><strong id="unlock-name"></strong></div>
     </main>
     <script src="./vendor/phaser.min.js"></script>
-    <script>
-      document.addEventListener('click', (event) => {
-        const startButton = event.target.closest('#title-start');
-        if (!startButton) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const title = document.getElementById('title-screen');
-        const modes = document.getElementById('modes-modal');
-        if (title) title.hidden = true;
-        if (modes) modes.hidden = false;
-      });
-    </script>
     <script type="module" src="./game.js"></script>
   </body>
 </html>

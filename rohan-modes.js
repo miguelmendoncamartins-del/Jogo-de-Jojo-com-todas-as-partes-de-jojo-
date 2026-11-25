@@ -2,18 +2,18 @@ const STORAGE_KEY = 'eternal-destiny-rohan-modes-v1';
 
 export const ROHAN_MODES = Object.freeze([
   { id: 'story', title: 'Modo História', description: 'Campanhas das nove partes e progressão original.', status: 'Disponível' },
-  { id: 'arcade', title: 'Modo Arcade', description: 'Arcade: treinamentos, ranqueadas, torneios e desafios rápidos.', status: 'Menu local' },
+  { id: 'arcade', title: 'Modo Arcade', description: 'Desafios rápidos e modos locais.', status: 'Menu local' },
   { id: 'versus', title: 'Modo Versus', description: 'Confronto local com lutadores desbloqueados pelas campanhas.', status: 'Disponível' },
-  { id: 'online', title: 'Modo Online', description: 'Versus, ranqueadas e torneios preparados para servidor.', status: 'Servidor necessário' },
+  { id: 'online', title: 'Modo Online', description: 'Versus, ranqueadas e torneios por sala com código.', status: 'Servidor necessário' },
   { id: 'ranked', title: 'Modo Ranqueado', description: 'Pontuação local preparada para pareamento competitivo.', status: 'Local' },
   { id: 'tournament', title: 'Modo Torneio', description: 'Chave eliminatória local com até 16 participantes.', status: 'Local' },
   { id: 'party', title: 'Party Game', description: 'Desafios rápidos de reação e observação.', status: 'Disponível' },
   { id: 'beat-em-up', title: "Beat 'em Up", description: 'Ondas de inimigos e chefes em arenas locais.', status: 'Local' },
-  { id: 'stealth', title: 'Modo Furtividade', description: 'Objetivos secretos e áreas de detecção.', status: 'Em desenvolvimento' },
-  { id: 'tower-defense', title: 'Tower Defense', description: 'Defesa por ondas com habilidades dos aliados.', status: 'Em desenvolvimento' },
-  { id: 'race', title: 'Corridas', description: 'Percursos inspirados na Steel Ball Run.', status: 'Em desenvolvimento' },
+  { id: 'stealth', title: 'Modo Furtividade', description: 'Objetivos secretos e áreas de detecção.', status: 'Jogável' },
+  { id: 'tower-defense', title: 'Tower Defense', description: 'Defesa por ondas com habilidades dos aliados.', status: 'Jogável' },
+  { id: 'race', title: 'Corridas', description: 'Percursos inspirados na Steel Ball Run.', status: 'Jogável' },
   { id: 'challenges', title: 'Desafios Multiplayer', description: 'Missões cooperativas ou competitivas.', status: 'Servidor necessário' },
-  { id: 'training', title: 'Estúdio do Rohan', description: 'Treino de ataques, hitboxes, IA e gravação local.', status: 'Disponível' },
+  { id: 'training', title: 'Estúdio do Rohan', description: 'Escolha o inimigo e ajuste a inteligência da IA.', status: 'Disponível' },
   { id: 'chronicles', title: 'Crônicas do Rohan', description: 'Histórico local, perfil e temporadas do jogador.', status: 'Local' },
 ]);
 
