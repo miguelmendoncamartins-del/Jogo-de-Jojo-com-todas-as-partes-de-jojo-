@@ -170,7 +170,6 @@ function loadGameSettings() {
 }
 let gameSettings = loadGameSettings();
 const state = {
-  paused: false,
   selected: 0,
   mode: 'campaign',
   localPvp: false,
@@ -194,6 +193,7 @@ const state = {
   assistCooldown: 0,
   assist: null,
   paused: false,
+  battleEpoch: 0,
   arenaMode: null,
   matchRoundTime: 180,
   matchRounds: 3,
@@ -498,7 +498,7 @@ function scheduleDialogueAdvance(dialogueId, action) {
   if (!signature) return;
   action.classList.add('dialogue-countdown');
   dialogueTimeout = window.setTimeout(() => {
-    if (activeDialogueSignature === signature && !action.disabled && !action.hidden) action.click();
+    if (!state.paused && activeDialogueSignature === signature && !action.disabled && !action.hidden) action.click();
   }, 5000);
 }
 
@@ -955,6 +955,11 @@ function syncActorFromPhysics(actor) {
 
 function resetBattle(mode = state.mode, { localPvp = false, opponentIndex = 1, trainingEnemy = 'rohan', aiLevel = 3, trainingBehavior = 'balanced' } = {}) {
   dioHurtSfxCount = 0;
+  state.battleEpoch += 1;
+  state.paused = false;
+  $('#pause-modal').hidden = true;
+  state.keys.clear();
+  releaseJoystick();
   state.mode = mode;
   state.localPvp = mode === 'versus' && localPvp;
   state.networkMirror = false;
@@ -1264,7 +1269,7 @@ function startTheme() {
 }
 
 function performBasicAttack() {
-  if (!state.fightActive || performance.now() < state.cinematicUntil || state.attackCooldown > 0) return;
+  if (state.paused || !state.fightActive || performance.now() < state.cinematicUntil || state.attackCooldown > 0) return;
   if (state.localPvp) {
     performPvpAttack(state.player, state.enemies.find((enemy) => enemy.playerTwo));
     return;
@@ -1294,7 +1299,7 @@ function performBasicAttack() {
 
 function performPvpAttack(attacker, target) {
   const targetIsInvulnerable = target === state.player ? state.invulnerable > 0 : target?.invulnerable > 0;
-  if (!state.fightActive || !target || target.hp <= 0 || targetIsInvulnerable || attacker.attackCooldown > 0) return;
+  if (state.paused || !state.fightActive || !target || target.hp <= 0 || targetIsInvulnerable || attacker.attackCooldown > 0) return;
   attacker.attackCooldown = 0.42;
   attacker.attackTimer = 0.28;
   attacker.attackAction = 'special';
@@ -1308,6 +1313,7 @@ function performPvpAttack(attacker, target) {
 }
 
 function useSkill(slot) {
+  if (state.paused) return;
   const skill = availableSkills()[slot];
   if (!skill || !state.fightActive || performance.now() < state.cinematicUntil) return;
   if (skill.tier === 'supreme' && !isUnlocked(skill)) {
@@ -1449,7 +1455,11 @@ function overlapsHitCircle(target, x, y, radius) {
 function distance(first, second) { return Math.hypot(first.x - second.x, first.y - second.y); }
 
 function startDash(actor, isPlayerTwo = false) {
-  if (!state.fightActive || actor.dashCooldown > 0) return;
+  if (state.paused || !state.fightActive || actor.dashCooldown > 0) return;
+  const maxEnergy = actor.maxEnergy ?? 100;
+  const currentEnergy = actor.energy ?? maxEnergy;
+  if (currentEnergy < 18) return;
+  actor.energy = Math.max(0, currentEnergy - 18);
   const directions = isPlayerTwo
     ? {
       x: Number(state.keys.has('arrowright')) - Number(state.keys.has('arrowleft')),
@@ -1550,6 +1560,7 @@ function checkBattleEnd() {
     return;
   }
   if (state.mode === 'final' && state.secretRunPhase === 'final-battle' && state.secretPhase <= 1) {
+    const battleEpoch = state.battleEpoch;
     state.secretPhase = 1;
     state.secretRunPhase = 'final-transform';
     save.story.secretFinalPhase = 1;
@@ -1561,7 +1572,7 @@ function checkBattleEnd() {
     $('#fight-title').textContent = 'A transformação começa';
     $('#fight-eyebrow').textContent = 'MODO HISTÓRIA SECRETO · TRANSFORMAÇÃO';
     window.setTimeout(() => {
-      if (state.mode !== 'final' || state.secretPhase !== 1) return;
+      if (state.battleEpoch !== battleEpoch || state.mode !== 'final' || state.secretPhase !== 1) return;
       state.fightActive = true;
       unlockSupremesAndAwakenJotaro();
     }, 950);
@@ -1678,6 +1689,9 @@ function update(dt, timestamp) {
   for (const particle of state.particles) particle.time -= dt;
   state.particles = state.particles.filter((particle) => particle.time > 0);
   state.player.energy = Math.min(state.player.maxEnergy, state.player.energy + dt * 7.2);
+  for (const enemy of state.enemies) {
+    if (enemy.maxEnergy) enemy.energy = Math.min(enemy.maxEnergy, (enemy.energy ?? enemy.maxEnergy) + dt * 7.2);
+  }
   state.player.attackTimer = Math.max(0, state.player.attackTimer - dt);
   state.player.hitFlash = Math.max(0, state.player.hitFlash - dt);
   const statuses = state.player.statuses;
@@ -1702,7 +1716,9 @@ function update(dt, timestamp) {
     let playerMoveY = Number(state.keys.has('s') || (!state.localPvp && state.keys.has('arrowdown'))) - Number(state.keys.has('w') || (!state.localPvp && state.keys.has('arrowup')));
     if (player.statuses.freeze > 0) playerMoveX = playerMoveY = 0;
     if (player.statuses.confuse > 0) { playerMoveX *= -1; playerMoveY *= -1; }
-    const sprinting = state.keys.has('shift') || state.keys.has('shiftleft') || state.keys.has('run-touch');
+    const sprintRequested = state.keys.has('shift') || state.keys.has('shiftleft') || state.keys.has('run-touch');
+    const sprinting = sprintRequested && player.energy > 0 && (playerMoveX !== 0 || playerMoveY !== 0);
+    if (sprinting) player.energy = Math.max(0, player.energy - dt * 18);
     moveControlledActor(player, dt, { x: playerMoveX, y: playerMoveY }, state.touchAxis, (sprinting ? 1.65 : 1) * (player.statuses.slow > 0 ? 0.55 : 1));
     if (state.fightActive) {
       for (const enemy of state.enemies) {
@@ -1713,7 +1729,9 @@ function update(dt, timestamp) {
           enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
           const moveX = Number(state.keys.has('arrowright')) - Number(state.keys.has('arrowleft'));
           const moveY = Number(state.keys.has('arrowdown')) - Number(state.keys.has('arrowup'));
-          const running = state.keys.has('shiftright');
+          const runningRequested = state.keys.has('shiftright');
+          const running = runningRequested && enemy.energy > 0 && (moveX !== 0 || moveY !== 0);
+          if (running) enemy.energy = Math.max(0, enemy.energy - dt * 18);
           moveControlledActor(enemy, dt, { x: moveX, y: moveY }, null, running ? 1.65 : 1);
         } else {
           updateEnemy(enemy, dt);
@@ -1841,7 +1859,8 @@ function playerDefeated() {
     saveRohanProfile(rohanProfile);
   }
   window.setTimeout(() => {
-    if (state.player.hp > 0) return;
+    if (lanMatch?.slot === 1) return;
+    if (state.player.hp > 0 || state.fightActive || state.paused) return;
     resetBattle(state.mode);
     showToast('Batalha reiniciada. Tente outra estratégia.');
   }, 1700);
@@ -2912,6 +2931,7 @@ function handleKeyDown(event) {
     startTitleFlow();
     return;
   }
+  if (state.paused) return;
   if (!$('#modes-modal').hidden || !$('#history-select').hidden || !$('#versus-select').hidden) return;
   if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
   const key = event.key.toLowerCase();
@@ -3029,6 +3049,10 @@ $('#sound-button').addEventListener('click', () => {
 });
 function resetProgress() {
   if (!window.confirm('Apagar todo o progresso salvo e voltar à primeira missão da Parte 1?')) return;
+  lanMatch = null;
+  if (lanPollTimer) clearInterval(lanPollTimer);
+  if (lanInputTimer) clearInterval(lanInputTimer);
+  if (lanSnapshotTimer) clearInterval(lanSnapshotTimer);
   save.advanced = [];
   save.supreme = [];
   save.victories = [];
@@ -3042,6 +3066,8 @@ function resetProgress() {
 
 function openPauseModal() {
   if (!gameStarted) return;
+  state.keys.clear();
+  releaseJoystick();
   state.paused = true;
   $('#pause-modal').hidden = false;
   $('#pause-resume').focus();
@@ -3049,6 +3075,8 @@ function openPauseModal() {
 
 function closePauseModal() {
   state.paused = false;
+  state.keys.clear();
+  releaseJoystick();
   $('#pause-modal').hidden = true;
   $('#game').focus({ preventScroll: true });
 }
@@ -3082,6 +3110,8 @@ function renderRohanChronicles() {
 }
 
 function openModesModal() {
+  state.keys.clear();
+  releaseJoystick();
   const modal = $('#modes-modal');
   choosingOnlineMode = false;
   modal.hidden = false;
@@ -3352,10 +3382,10 @@ function launchLanBattle() {
   const first = characters.findIndex((character) => character.id === lanMatch.room.players[0]?.character);
   const second = characters.findIndex((character) => character.id === lanMatch.room.players[1]?.character);
   if (first < 0 || second < 0) return;
-  state.selected = first;
+  state.selected = lanMatch.slot === 0 ? first : second;
   $('#versus-select').hidden = true;
   gameStarted = true;
-  resetBattle('versus', { localPvp: true, opponentIndex: second });
+  resetBattle('versus', { localPvp: true, opponentIndex: lanMatch.slot === 0 ? second : first });
   state.networkMirror = lanMatch.slot === 1;
   lanRemoteActions = { attack: 0, dash: 0 };
   if (lanSnapshotTimer) clearInterval(lanSnapshotTimer);
@@ -3455,8 +3485,13 @@ function applyLanSnapshot(snapshot) {
     actor.body?.reset(data.x, data.y);
     actor.body?.setVelocity(0, 0);
   };
-  apply(state.player, snapshot.player);
-  apply(state.enemies.find((enemy) => enemy.playerTwo), snapshot.rival);
+  if (lanMatch.slot === 1) {
+    apply(state.player, snapshot.rival);
+    apply(state.enemies.find((enemy) => enemy.playerTwo), snapshot.player);
+  } else {
+    apply(state.player, snapshot.player);
+    apply(state.enemies.find((enemy) => enemy.playerTwo), snapshot.rival);
+  }
   state.fightActive = snapshot.fightActive;
   if (!snapshot.fightActive) {
     const playerWon = snapshot.rival?.hp <= 0;

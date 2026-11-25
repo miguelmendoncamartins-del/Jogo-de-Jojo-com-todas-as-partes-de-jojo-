@@ -7,7 +7,13 @@ const lanRooms = new Map();
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk) => { body += chunk; if (body.length > 16_384) reject(new Error('Solicitação muito grande.')); });
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 16_384) {
+        reject(new Error('Solicitação muito grande.'));
+        req.destroy();
+      }
+    });
     req.on('end', () => {
       try { resolve(body ? JSON.parse(body) : {}); } catch { reject(new Error('JSON inválido.')); }
     });
